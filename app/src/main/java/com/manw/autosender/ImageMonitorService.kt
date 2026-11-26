@@ -23,9 +23,21 @@ class ImageMonitorService : Service() {
     companion object {
         private const val CHANNEL_ID = "manw_image_monitor"
         private const val NOTIFICATION_ID = 3107
+        private const val DEBOUNCE_MS = 800L
     }
 
+    private val handler = Handler(Looper.getMainLooper())
     private var observer: ContentObserver? = null
+    private val scanRunnable = Runnable {
+        if (SecurePrefs.get(applicationContext).getBoolean("sync_enabled", false)) {
+            val request = OneTimeWorkRequestBuilder<ImageSyncWorker>().build()
+            WorkManager.getInstance(applicationContext).enqueueUniqueWork(
+                ImageSyncWorker.WORK_NAME + "_event",
+                ExistingWorkPolicy.APPEND_OR_REPLACE,
+                request
+            )
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -42,32 +54,30 @@ class ImageMonitorService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (!SecurePrefs.get(applicationContext).getBoolean("sync_enabled", false)) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
         if (observer == null) registerImageObserver()
         return START_STICKY
     }
 
     private fun registerImageObserver() {
         if (observer != null) return
-        observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+        observer = object : ContentObserver(handler) {
             override fun onChange(selfChange: Boolean, uri: Uri?) {
-                val request = OneTimeWorkRequestBuilder<ImageSyncWorker>().build()
-                WorkManager.getInstance(applicationContext).enqueueUniqueWork(
-                    ImageSyncWorker.WORK_NAME + "_event",
-                    ExistingWorkPolicy.KEEP,
-                    request
-                )
+                if (!SecurePrefs.get(applicationContext).getBoolean("sync_enabled", false)) return
+                handler.removeCallbacks(scanRunnable)
+                handler.postDelayed(scanRunnable, DEBOUNCE_MS)
             }
         }
-        contentResolver.registerContentObserver(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI, true, observer!!
-        )
+        contentResolver.registerContentObserver(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, true, observer!!)
     }
 
     private fun buildNotification(): Notification {
         val openApp = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java),
-            PendingIntent.FLAG_UPDATE_CURRENT or
-                (if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0)
+            PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0)
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_menu_upload)
@@ -82,15 +92,13 @@ class ImageMonitorService : Service() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID, "مراقبة الصور والإرسال التلقائي",
-                NotificationManager.IMPORTANCE_LOW
-            )
+            val channel = NotificationChannel(CHANNEL_ID, "مراقبة الصور والإرسال التلقائي", NotificationManager.IMPORTANCE_LOW)
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
     }
 
     override fun onDestroy() {
+        handler.removeCallbacksAndMessages(null)
         observer?.let { contentResolver.unregisterContentObserver(it) }
         observer = null
         super.onDestroy()

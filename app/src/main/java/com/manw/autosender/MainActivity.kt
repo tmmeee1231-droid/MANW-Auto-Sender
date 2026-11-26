@@ -2,12 +2,8 @@ package com.manw.autosender
 
 import android.Manifest
 import android.content.pm.PackageManager
-import android.database.ContentObserver
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.provider.MediaStore
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
@@ -26,7 +22,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var token: EditText
     private lateinit var chat: EditText
     private lateinit var status: TextView
-    private var imageObserver: ContentObserver? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -64,7 +59,7 @@ class MainActivity : AppCompatActivity() {
         root.addView(sendLatest)
         val test = Button(this).apply { text = "اختبار اتصال البوت فقط" }
         root.addView(test)
-        root.addView(label("يبدأ الإرسال التلقائي عند اكتشاف صورة جديدة أثناء فتح التطبيق، مع فحص احتياطي كل 15 دقيقة. قد يؤخر أندرويد المهام إذا كان التطبيق مغلقًا أو الهاتف في وضع توفير الطاقة."))
+        root.addView(label("يراقب التطبيق الصور الجديدة في الخلفية ويرسلها تلقائيًا فور اكتشافها، مع فحص احتياطي كل 15 دقيقة. ستظل هناك إشعارات خدمة ظاهرة أثناء المراقبة. قد يوقف أندرويد الخدمة إذا فرضت إيقاف التطبيق أو قيّدت تشغيله."))
         setContentView(ScrollView(this).apply { addView(root) })
 
         save.setOnClickListener {
@@ -87,6 +82,7 @@ class MainActivity : AppCompatActivity() {
             WorkManager.getInstance(this).cancelUniqueWork(ImageSyncWorker.WORK_NAME + "_now")
             WorkManager.getInstance(this).cancelUniqueWork(ImageSyncWorker.WORK_NAME + "_event")
             prefs.edit().putBoolean("sync_enabled", false).apply()
+            stopService(android.content.Intent(this, ImageMonitorService::class.java))
             status.text = "الحالة: متوقف"
             toast("تم إيقاف المزامنة")
         }
@@ -114,31 +110,14 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread { toast(result) }
             }.start()
         }
-        if (prefs.getBoolean("sync_enabled", false)) status.text = "الحالة: المزامنة مفعّلة"
+        if (prefs.getBoolean("sync_enabled", false)) {
+            status.text = "الحالة: المزامنة مفعّلة"
+            if (hasImagePermission()) startMonitorService()
+        }
         val error = prefs.getString("last_error", null)
         val last = prefs.getString("last_result", null)
         if (!error.isNullOrBlank()) root.addView(label("آخر خطأ: " + error))
         if (!last.isNullOrBlank()) root.addView(label("آخر نتيجة: " + last))
-    }
-
-    override fun onResume() {
-        super.onResume()
-        if (hasImagePermission() && SecurePrefs.get(this).getBoolean("sync_enabled", false)) {
-            imageObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
-                override fun onChange(selfChange: Boolean, uri: Uri?) {
-                    val request = OneTimeWorkRequestBuilder<ImageSyncWorker>().build()
-                    WorkManager.getInstance(this@MainActivity).enqueueUniqueWork(
-                        ImageSyncWorker.WORK_NAME + "_event", ExistingWorkPolicy.KEEP, request)
-                }
-            }
-            contentResolver.registerContentObserver(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, true, imageObserver!!)
-        }
-    }
-
-    override fun onPause() {
-        imageObserver?.let { contentResolver.unregisterContentObserver(it) }
-        imageObserver = null
-        super.onPause()
     }
 
     private fun imagePermission(): String =
@@ -146,6 +125,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun hasImagePermission() =
         ContextCompat.checkSelfPermission(this, imagePermission()) == PackageManager.PERMISSION_GRANTED
+
+    private fun startMonitorService() {
+        val intent = android.content.Intent(this, ImageMonitorService::class.java)
+        ContextCompat.startForegroundService(this, intent)
+    }
 
     private fun enableSync() {
         val prefs = SecurePrefs.get(this)
@@ -156,8 +140,9 @@ class MainActivity : AppCompatActivity() {
             OneTimeWorkRequestBuilder<ImageSyncWorker>().build())
         wm.enqueueUniquePeriodicWork(ImageSyncWorker.WORK_NAME, ExistingPeriodicWorkPolicy.UPDATE,
             PeriodicWorkRequestBuilder<ImageSyncWorker>(15, TimeUnit.MINUTES).build())
-        status.text = "الحالة: المزامنة مفعّلة"
-        toast("تم التشغيل. سيبدأ الفحص الآن.")
+        startMonitorService()
+        status.text = "الحالة: المراقبة الفورية تعمل في الخلفية"
+        toast("تم تشغيل المراقبة الفورية في الخلفية.")
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {

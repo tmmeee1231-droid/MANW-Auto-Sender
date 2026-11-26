@@ -72,7 +72,7 @@ class ImageSyncWorker(context: Context, params: WorkerParameters) : CoroutineWor
                 }
             }
             prefs.edit().putLong("scan_from", maxOf(newest, since))
-                .putString("sent_ids", sent.toSet())
+                .putStringSet("sent_ids", sent.toSet())
                 .remove("last_error")
                 .putString("last_result", "تم فحص الصور: " + sent.size + " صورة مرسلة إجمالًا")
                 .apply()

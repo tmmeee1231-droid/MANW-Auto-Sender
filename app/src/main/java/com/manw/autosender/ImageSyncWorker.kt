@@ -39,7 +39,7 @@ class ImageSyncWorker(context: Context, params: WorkerParameters) : CoroutineWor
         val since = prefs.getLong("scan_from", System.currentTimeMillis() / 1000L)
         val collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
         val projection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_ADDED)
-        val selection = "${MediaStore.Images.Media.DATE_ADDED} > ?"
+        val selection = "${MediaStore.Images.Media.DATE_ADDED} >= ?"
         val sent = prefs.getStringSet("sent_ids", emptySet())?.toMutableSet() ?: mutableSetOf()
         var newest = since
         try {

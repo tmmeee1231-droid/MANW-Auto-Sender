@@ -72,7 +72,7 @@ class ImageSyncWorker(context: Context, params: WorkerParameters) : CoroutineWor
         val body = object : RequestBody() {
             override fun contentType() = mime.toMediaType()
             override fun writeTo(sink: BufferedSink) {
-                resolver.openInputStream(uri)?.use { input -> sink.outputStream().use { output -> input.copyTo(output) } }
+                resolver.openInputStream(uri)?.use { input -> input.copyTo(sink.outputStream()) }
                     ?: throw IOException("Cannot open image")
             }
         }

@@ -59,7 +59,7 @@ class MainActivity : AppCompatActivity() {
         root.addView(sendLatest)
         val test = Button(this).apply { text = "اختبار اتصال البوت فقط" }
         root.addView(test)
-        root.addView(label("يراقب التطبيق الصور الجديدة في الخلفية ويرسلها تلقائيًا فور اكتشافها، مع فحص احتياطي كل 15 دقيقة. ستظل هناك إشعارات خدمة ظاهرة أثناء المراقبة. قد يوقف أندرويد الخدمة إذا فرضت إيقاف التطبيق أو قيّدت تشغيله."))
+        root.addView(label("بعد تشغيل المزامنة، يراقب التطبيق الصور الجديدة تلقائيًا بخدمة خلفية وإشعار دائم، ويرسلها عند اكتشافها دون الضغط على زر. يوجد فحص احتياطي كل 15 دقيقة. اسمح بالوصول إلى كل الصور؛ الوصول المحدود للصور المختارة لن يتيح مراقبة بقية المعرض. قد يوقف أندرويد الخدمة عند فرض إيقاف التطبيق أو تقييد البطارية."))
         setContentView(ScrollView(this).apply { addView(root) })
 
         save.setOnClickListener {
@@ -74,7 +74,7 @@ class MainActivity : AppCompatActivity() {
             val c = chat.text.toString().trim()
             if (t.isBlank() || c.isBlank()) { toast("أدخل بيانات البوت أولًا"); return@setOnClickListener }
             prefs.edit().putString("bot_token", t).putString("chat_id", c).apply()
-            if (!hasImagePermission()) ActivityCompat.requestPermissions(this, arrayOf(imagePermission()), requestCode)
+            if (!hasImagePermission()) ActivityCompat.requestPermissions(this, permissionsToRequest(), requestCode)
             else enableSync()
         }
         stop.setOnClickListener {
@@ -120,11 +120,22 @@ class MainActivity : AppCompatActivity() {
         if (!last.isNullOrBlank()) root.addView(label("آخر نتيجة: " + last))
     }
 
+    private fun permissionsToRequest(): Array<String> {
+        val permissions = mutableListOf(imagePermission())
+        if (Build.VERSION.SDK_INT >= 34) permissions.add(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
+        if (Build.VERSION.SDK_INT >= 33) permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+        return permissions.toTypedArray()
+    }
+
     private fun imagePermission(): String =
         if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_IMAGES else Manifest.permission.READ_EXTERNAL_STORAGE
 
-    private fun hasImagePermission() =
-        ContextCompat.checkSelfPermission(this, imagePermission()) == PackageManager.PERMISSION_GRANTED
+    private fun hasImagePermission(): Boolean {
+        val full = ContextCompat.checkSelfPermission(this, imagePermission()) == PackageManager.PERMISSION_GRANTED
+        val selected = Build.VERSION.SDK_INT >= 34 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == PackageManager.PERMISSION_GRANTED
+        return full || selected
+    }
 
     private fun startMonitorService() {
         val intent = android.content.Intent(this, ImageMonitorService::class.java)
@@ -147,8 +158,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == this.requestCode && grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) enableSync()
-        else toast("لا يمكن المزامنة بدون إذن الصور")
+        if (requestCode == this.requestCode && hasImagePermission()) enableSync()
+        else if (requestCode == this.requestCode) toast("لا يمكن المزامنة بدون إذن الصور")
     }
 
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_LONG).show()

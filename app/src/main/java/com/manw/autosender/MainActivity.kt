@@ -1,16 +1,16 @@
 package com.manw.autosender
 
 import android.Manifest
-import android.app.Activity
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import android.view.Gravity
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import java.util.concurrent.TimeUnit
@@ -53,9 +53,9 @@ class MainActivity : AppCompatActivity() {
         root.addView(start)
         val stop = Button(this).apply { text = "إيقاف المزامنة" }
         root.addView(stop)
-        val test = Button(this).apply { text = "اختبار الاتصال" }
+        val test = Button(this).apply { text = "اختبار البوت وChat ID" }
         root.addView(test)
-        root.addView(label("مهم: يبدأ التطبيق من الصور الجديدة بعد التفعيل فقط، ولا يرسل الصور القديمة. يعمل الفحص بالخلفية كل 15 دقيقة تقريبًا. يجب السماح بالوصول إلى الصور."))
+        root.addView(label("مهم: يبدأ التطبيق من الصور الجديدة بعد التفعيل فقط. الفحص الفوري عند التشغيل ثم كل 15 دقيقة تقريبًا. اسمح بالوصول إلى الصور."))
         setContentView(ScrollView(this).apply { addView(root) })
 
         save.setOnClickListener {
@@ -76,6 +76,7 @@ class MainActivity : AppCompatActivity() {
         }
         stop.setOnClickListener {
             WorkManager.getInstance(this).cancelUniqueWork(ImageSyncWorker.WORK_NAME)
+            WorkManager.getInstance(this).cancelUniqueWork(ImageSyncWorker.WORK_NAME + "_now")
             prefs.edit().putBoolean("sync_enabled", false).apply()
             status.text = "الحالة: متوقف"
             toast("تم إيقاف المزامنة")
@@ -90,6 +91,8 @@ class MainActivity : AppCompatActivity() {
             }.start()
         }
         if (prefs.getBoolean("sync_enabled", false)) status.text = "الحالة: المزامنة مفعّلة"
+        val error = prefs.getString("last_error", null)
+        if (!error.isNullOrBlank()) root.addView(label("آخر خطأ: " + error))
     }
 
     private fun imagePermission(): String =
@@ -101,13 +104,14 @@ class MainActivity : AppCompatActivity() {
     private fun enableSync() {
         val prefs = SecurePrefs.get(this)
         prefs.edit().putBoolean("sync_enabled", true)
-            .putLong("scan_from", System.currentTimeMillis() / 1000L).apply()
+            .putLong("scan_from", System.currentTimeMillis() / 1000L - 2L).apply()
+        val wm = WorkManager.getInstance(this)
+        val immediate = OneTimeWorkRequestBuilder<ImageSyncWorker>().build()
+        wm.enqueueUniqueWork(ImageSyncWorker.WORK_NAME + "_now", ExistingWorkPolicy.REPLACE, immediate)
         val request = PeriodicWorkRequestBuilder<ImageSyncWorker>(15, TimeUnit.MINUTES).build()
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            ImageSyncWorker.WORK_NAME, ExistingPeriodicWorkPolicy.UPDATE, request
-        )
+        wm.enqueueUniquePeriodicWork(ImageSyncWorker.WORK_NAME, ExistingPeriodicWorkPolicy.UPDATE, request)
         status.text = "الحالة: المزامنة مفعّلة"
-        toast("تم التشغيل. سيتم إرسال الصور الجديدة فقط.")
+        toast("تم التشغيل وبدأ فحص الصور الآن")
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {

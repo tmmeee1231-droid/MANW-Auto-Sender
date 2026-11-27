@@ -27,6 +27,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var token: EditText
     private lateinit var chat: EditText
     private lateinit var status: TextView
+    private var passwordGateVisible = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -196,7 +197,13 @@ class MainActivity : AppCompatActivity() {
     }
 
 
+    override fun onResume() {
+        super.onResume()
+        if (!AppPassword.isSessionValid(this) && !passwordGateVisible) showPasswordGate()
+    }
+
     private fun showPasswordGate() {
+        passwordGateVisible = true
         val prefs = SecurePrefs.get(this)
         val firstSetup = !AppPassword.isConfigured(this)
         val root = LinearLayout(this).apply {

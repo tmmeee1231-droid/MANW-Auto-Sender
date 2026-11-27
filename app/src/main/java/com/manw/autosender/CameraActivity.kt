@@ -84,9 +84,10 @@ class CameraActivity : AppCompatActivity() {
             imageCapture = ImageCapture.Builder()
                 .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
                 .build()
+            val captureUseCase = imageCapture ?: return@addListener
             try {
                 provider.unbindAll()
-                provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageCapture)
+                provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, captureUseCase)
             } catch (e: Exception) {
                 Toast.makeText(this, "تعذر تشغيل الكاميرا الخلفية: ${e.message}", Toast.LENGTH_LONG).show()
             }

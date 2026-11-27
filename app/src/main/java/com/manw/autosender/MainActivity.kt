@@ -95,10 +95,17 @@ class MainActivity : AppCompatActivity() {
         root.addView(enableVolumeSend)
         val disableVolumeSend = Button(this).apply { text = "إيقاف الإرسال بزر خفض الصوت" }
         root.addView(disableVolumeSend)
+        val remoteAccess = Button(this).apply { text = "تفعيل تحكم الموقع باللمس والسحب والكتابة" }
+        root.addView(remoteAccess)
+        remoteAccess.setOnClickListener {
+            toast("فعّل خدمة MANW — تحكم لمس عن بُعد من خدمات إمكانية الوصول، ثم ارجع للتطبيق.")
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        }
         val notificationSettings = Button(this).apply { text = "اختيار التطبيقات لإرسال إشعاراتها إلى البوت" }
         root.addView(notificationSettings)
         val changePassword = Button(this).apply { text = "تغيير كلمة سر التطبيق" }
         root.addView(changePassword)
+        root.addView(label("للتحكم من الموقع: فعّل خدمة MANW — تحكم لمس عن بُعد من إعدادات إمكانية الوصول. لا تعمل أوامر اللمس قبل تفعيلها يدويًا."))
         root.addView(label("بعد التفعيل اسمح لخدمة إمكانية الوصول الخاصة بالتطبيق. افتح كاميرا الهاتف العادية وصوّر؛ الضغط المطوّل على زر خفض الصوت يرسل الصور الجديدة منذ التفعيل إلى تيليجرام. أثناء تفعيل الوضع سيُستخدم زر خفض الصوت للإرسال بدل خفض مستوى الصوت."))
         root.addView(label("بعد تشغيل المزامنة، يراقب التطبيق الصور الجديدة تلقائيًا بخدمة خلفية وإشعار دائم، ويرسلها عند اكتشافها دون الضغط على زر. يوجد فحص احتياطي كل 15 دقيقة. اسمح بالوصول إلى كل الصور؛ الوصول المحدود للصور المختارة لن يتيح مراقبة بقية المعرض. قد يوقف أندرويد الخدمة عند فرض إيقاف التطبيق أو تقييد البطارية."))
         setContentView(ScrollView(this).apply { addView(root) })

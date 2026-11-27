@@ -218,11 +218,13 @@ class CameraSessionService : Service(), LifecycleOwner {
             proxy.close()
             return
         }
-        if (System.currentTimeMillis() - lastTextAnalysisAt < 5000L) {
+        val analysisNow = System.currentTimeMillis()
+        if (analysisNow - lastTextAnalysisAt < 1000L) {
             analyzing.set(false)
             proxy.close()
             return
         }
+        lastTextAnalysisAt = analysisNow
         val input = try {
             InputImage.fromMediaImage(mediaImage, proxy.imageInfo.rotationDegrees)
         } catch (_: Exception) {
@@ -284,8 +286,8 @@ class CameraSessionService : Service(), LifecycleOwner {
         sending = true
         updateNotification("جاري التقاط الصورة وإرسالها إلى تيليجرام…")
         val original = File(cacheDir, "MANW_REMOTE_" + System.currentTimeMillis() + ".jpg")
-        // Meter focus/exposure before capture so text has a chance to become sharp.
-        focusCenter()
+        // Keep the text-detection autofocus already metered from the live preview.
+        // Do not refocus the empty frame center here; that would undo focus on the detected text.
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
             capture.takePicture(OutputFileOptions.Builder(original).build(),
             ContextCompat.getMainExecutor(this), object : ImageCapture.OnImageSavedCallback {

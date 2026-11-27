@@ -1,9 +1,14 @@
 package com.manw.autosender
 
 import android.Manifest
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
-import android.view.KeyEvent
+import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -27,184 +32,197 @@ import java.io.File
 import java.util.concurrent.TimeUnit
 
 class CameraActivity : AppCompatActivity() {
+    companion object { const val EXTRA_REMOTE_REQUEST = "remote_camera_request" }
+
     private lateinit var previewView: PreviewView
     private lateinit var statusLabel: TextView
+    private lateinit var startButton: Button
+    private lateinit var stopButton: Button
     private var imageCapture: ImageCapture? = null
-    private val capturedPhotos = mutableListOf<File>()
+    private var cameraProvider: ProcessCameraProvider? = null
+    private var sessionActive = false
     private var isSending = false
-    private var longPressHandled = false
+    private var receiverRegistered = false
 
-    private val permission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) startCamera() else {
-            Toast.makeText(this, "لازم تسمح باستخدام الكاميرا", Toast.LENGTH_LONG).show()
-            finish()
+    private val remoteReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                ImageMonitorService.ACTION_REMOTE_CAPTURE -> {
+                    if (sessionActive) takeAndSendPhoto()
+                    else sendBotStatus("لم تبدأ جلسة الكاميرا بعد. وافق على الطلب من شاشة الهاتف أولاً.")
+                }
+                ImageMonitorService.ACTION_REMOTE_STOP -> stopCameraSession("تم إيقاف جلسة الكاميرا بأمر من البوت.")
+            }
         }
+    }
+
+    private val cameraPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) beginCameraSession()
+        else statusLabel.text = "لم تمنح إذن الكاميرا؛ لم يبدأ التصوير."
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val prefs = SecurePrefs.get(this)
-        val chatId = prefs.getString("chat_id", "") ?: ""
+        buildUi()
+        registerRemoteReceiver()
+        statusLabel.text = "طلب تصوير عن بُعد بالكاميرا الخلفية. الكاميرا متوقفة حتى تضغط موافقة."
+    }
+
+    private fun buildUi() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(0xFF10111A.toInt())
         }
         statusLabel = TextView(this).apply {
-            text = "إرسال تيليجرام إلى: ${if (chatId.isBlank()) "لم يتم ضبط Chat ID" else chatId}\nزر رفع الصوت: تصوير صورة\nاضغط مطولاً على زر خفض الصوت: إرسال كل الصور"
+            text = "الكاميرا متوقفة حتى توافق."
             textSize = 16f
             setTextColor(0xFFFFFFFF.toInt())
-            setPadding(20, 16, 20, 16)
+            setPadding(20, 18, 20, 18)
         }
         previewView = PreviewView(this).apply {
             implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+            visibility = View.GONE
+        }
+        startButton = Button(this).apply { text = "موافقة وبدء الكاميرا الخلفية" }
+        stopButton = Button(this).apply {
+            text = "إيقاف الكاميرا فوراً"
+            visibility = View.GONE
         }
         root.addView(statusLabel)
-        root.addView(previewView, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
-        ))
-        val capture = Button(this).apply { text = "التقاط صورة (زر رفع الصوت)" }
-        root.addView(capture)
-        capture.setOnClickListener { takePhoto() }
-        val send = Button(this).apply { text = "إرسال الصور (ضغط مطوّل على خفض الصوت)" }
-        root.addView(send)
-        send.setOnClickListener { sendCapturedPhotos() }
+        root.addView(previewView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        root.addView(startButton)
+        root.addView(stopButton)
         setContentView(root)
 
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-            startCamera()
-        } else permission.launch(Manifest.permission.CAMERA)
+        startButton.setOnClickListener {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                beginCameraSession()
+            } else cameraPermission.launch(Manifest.permission.CAMERA)
+        }
+        stopButton.setOnClickListener { stopCameraSession("أوقفت جلسة الكاميرا من الهاتف.") }
     }
 
-    private fun startCamera() {
+    private fun registerRemoteReceiver() {
+        val filter = IntentFilter().apply {
+            addAction(ImageMonitorService.ACTION_REMOTE_CAPTURE)
+            addAction(ImageMonitorService.ACTION_REMOTE_STOP)
+        }
+        if (Build.VERSION.SDK_INT >= 33) registerReceiver(remoteReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        else @Suppress("DEPRECATION") registerReceiver(remoteReceiver, filter)
+        receiverRegistered = true
+    }
+
+    private fun beginCameraSession() {
+        if (sessionActive) return
         val future = ProcessCameraProvider.getInstance(this)
         future.addListener({
-            val provider = future.get()
-            val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
-            imageCapture = ImageCapture.Builder()
-                .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
-                .build()
-            val captureUseCase = imageCapture ?: return@addListener
             try {
+                val provider = future.get()
+                val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
+                val capture = ImageCapture.Builder().setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY).build()
                 provider.unbindAll()
-                provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, captureUseCase)
+                provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, capture)
+                cameraProvider = provider
+                imageCapture = capture
+                sessionActive = true
+                previewView.visibility = View.VISIBLE
+                startButton.visibility = View.GONE
+                stopButton.visibility = View.VISIBLE
+                statusLabel.text = "الكاميرا الخلفية تعمل بموافقتك. أرسل /capture في البوت لالتقاط صورة، أو /stopcamera للإيقاف."
+                sendBotStatus("تمت الموافقة وبدأت جلسة الكاميرا الخلفية. أرسل /capture لالتقاط صورة.")
             } catch (e: Exception) {
-                Toast.makeText(this, "تعذر تشغيل الكاميرا الخلفية: ${e.message}", Toast.LENGTH_LONG).show()
+                statusLabel.text = "تعذر تشغيل الكاميرا: " + (e.message ?: "خطأ غير معروف")
             }
         }, ContextCompat.getMainExecutor(this))
     }
 
-    private fun takePhoto() {
-        if (isSending) return
+    private fun takeAndSendPhoto() {
+        if (!sessionActive || isSending) return
         val capture = imageCapture ?: return
-        val file = File(cacheDir, "MANW_${System.currentTimeMillis()}.jpg")
+        isSending = true
+        statusLabel.text = "وصل أمر التصوير؛ جاري التقاط الصورة وإرسالها..."
+        val file = File(cacheDir, "MANW_REMOTE_" + System.currentTimeMillis() + ".jpg")
         val options = ImageCapture.OutputFileOptions.Builder(file).build()
         capture.takePicture(options, ContextCompat.getMainExecutor(this), object : ImageCapture.OnImageSavedCallback {
             override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                capturedPhotos.add(file)
-                statusLabel.text = "تم تصوير ${capturedPhotos.size} صورة.\nزر رفع الصوت: صورة جديدة\nاضغط مطولاً على زر خفض الصوت: إرسال الكل إلى تيليجرام"
-                Toast.makeText(this@CameraActivity, "تم التقاط الصورة رقم ${capturedPhotos.size}", Toast.LENGTH_SHORT).show()
+                Thread {
+                    val result = uploadPhoto(file)
+                    runOnUiThread {
+                        isSending = false
+                        if (result.first) {
+                            statusLabel.text = "تم التقاط الصورة وأكد تيليجرام استلامها."
+                            sendBotStatus("تم التقاط الصورة وإرسالها بنجاح إلى هذه المحادثة.")
+                            file.delete()
+                        } else {
+                            statusLabel.text = "تم التقاط الصورة لكن فشل إرسالها: " + result.second
+                            sendBotStatus("فشل إرسال الصورة: " + result.second)
+                        }
+                    }
+                }.start()
             }
-
             override fun onError(exception: ImageCaptureException) {
-                Toast.makeText(this@CameraActivity, "فشل التقاط الصورة: ${exception.message}", Toast.LENGTH_LONG).show()
+                isSending = false
+                statusLabel.text = "فشل التصوير: " + (exception.message ?: "خطأ")
+                sendBotStatus("تعذر التقاط الصورة: " + (exception.message ?: "خطأ"))
             }
         })
     }
 
-    private fun sendCapturedPhotos() {
-        if (isSending) return
-        val photos = capturedPhotos.toList()
-        if (photos.isEmpty()) {
-            Toast.makeText(this, "مفيش صور لإرسالها. صوّر الأول بزر رفع الصوت.", Toast.LENGTH_LONG).show()
-            return
-        }
+    private fun uploadPhoto(file: File): Pair<Boolean, String> {
         val prefs = SecurePrefs.get(this)
         val token = prefs.getString("bot_token", "") ?: ""
         val chatId = prefs.getString("chat_id", "") ?: ""
-        if (token.isBlank() || chatId.isBlank()) {
-            Toast.makeText(this, "اضبط Bot Token وChat ID من إعدادات التطبيق أولاً.", Toast.LENGTH_LONG).show()
-            return
-        }
-
-        isSending = true
-        statusLabel.text = "جاري إرسال ${photos.size} صورة إلى تيليجرام..."
-        Thread {
-            var sent = 0
-            var error: String? = null
-            for (photo in photos) {
-                val result = uploadPhoto(photo, token, chatId)
-                if (!result.first) {
-                    error = result.second
-                    break
-                }
-                sent++
-            }
-            runOnUiThread {
-                isSending = false
-                if (error == null) {
-                    capturedPhotos.removeAll(photos.toSet())
-                    photos.forEach { it.delete() }
-                    statusLabel.text = "تم إرسال ${sent} صورة بنجاح إلى تيليجرام.\nيمكنك التصوير من جديد بزر رفع الصوت."
-                    Toast.makeText(this, "تيليجرام أكد استلام كل الصور: $sent", Toast.LENGTH_LONG).show()
-                } else {
-                    statusLabel.text = "تم إرسال $sent من ${photos.size} صورة. فشل الباقي: $error\nحاول الضغط مطولاً على زر خفض الصوت مرة أخرى."
-                    Toast.makeText(this, "تعذر إكمال الإرسال: $error", Toast.LENGTH_LONG).show()
-                }
-            }
-        }.start()
-    }
-
-    private fun uploadPhoto(file: File, token: String, chatId: String): Pair<Boolean, String> {
+        if (token.isBlank() || chatId.isBlank()) return Pair(false, "بيانات البوت غير مكتملة")
         return try {
             val body = MultipartBody.Builder().setType(MultipartBody.FORM)
                 .addFormDataPart("chat_id", chatId)
                 .addFormDataPart("photo", file.name, file.asRequestBody("image/jpeg".toMediaType()))
                 .build()
-            val request = Request.Builder()
-                .url("https://api.telegram.org/bot$token/sendPhoto")
-                .post(body)
-                .build()
+            val request = Request.Builder().url("https://api.telegram.org/bot" + token + "/sendPhoto").post(body).build()
             val client = OkHttpClient.Builder().callTimeout(90, TimeUnit.SECONDS).build()
             client.newCall(request).execute().use { response ->
                 val json = JSONObject(response.body?.string().orEmpty())
                 val ok = response.isSuccessful && json.optBoolean("ok")
-                Pair(ok, if (ok) "ok" else json.optString("description", "HTTP ${response.code}"))
+                Pair(ok, if (ok) "ok" else json.optString("description", "HTTP " + response.code))
             }
-        } catch (e: Exception) {
-            Pair(false, e.message ?: "خطأ اتصال")
-        }
+        } catch (e: Exception) { Pair(false, e.message ?: "خطأ اتصال") }
     }
 
-    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        when (keyCode) {
-            KeyEvent.KEYCODE_VOLUME_UP -> {
-                if (event?.repeatCount == 0) takePhoto()
-                return true
-            }
-            KeyEvent.KEYCODE_VOLUME_DOWN -> {
-                if (event?.repeatCount == 0) {
-                    longPressHandled = false
-                    event.startTracking()
-                }
-                return true
-            }
-        }
-        return super.onKeyDown(keyCode, event)
+    private fun sendBotStatus(message: String) {
+        val prefs = SecurePrefs.get(this)
+        val token = prefs.getString("bot_token", "") ?: ""
+        val chatId = prefs.getString("chat_id", "") ?: ""
+        if (token.isBlank() || chatId.isBlank()) return
+        Thread {
+            try {
+                val body = okhttp3.FormBody.Builder().add("chat_id", chatId).add("text", message).build()
+                val request = Request.Builder().url("https://api.telegram.org/bot" + token + "/sendMessage").post(body).build()
+                OkHttpClient().newCall(request).execute().close()
+            } catch (_: Exception) { }
+        }.start()
     }
 
-    override fun onKeyLongPress(keyCode: Int, event: KeyEvent?): Boolean {
-        if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
-            if (!longPressHandled) {
-                longPressHandled = true
-                sendCapturedPhotos()
-            }
-            return true
-        }
-        return super.onKeyLongPress(keyCode, event)
+    private fun stopCameraSession(message: String) {
+        sessionActive = false
+        cameraProvider?.unbindAll()
+        cameraProvider = null
+        imageCapture = null
+        previewView.visibility = View.GONE
+        startButton.visibility = View.VISIBLE
+        stopButton.visibility = View.GONE
+        statusLabel.text = message
+        sendBotStatus(message)
     }
 
-    override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
-        if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP) return true
-        return super.onKeyUp(keyCode, event)
+    override fun onDestroy() {
+        if (sessionActive) {
+            sessionActive = false
+            cameraProvider?.unbindAll()
+        }
+        if (receiverRegistered) {
+            try { unregisterReceiver(remoteReceiver) } catch (_: Exception) { }
+            receiverRegistered = false
+        }
+        super.onDestroy()
     }
 }

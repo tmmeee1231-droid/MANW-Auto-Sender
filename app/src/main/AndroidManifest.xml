@@ -15,7 +15,7 @@
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
-    <application android:allowBackup="false" android:label="𝑀𝒜𝒩𝒲 Auto Sender" android:theme="@style/AppTheme">
+    <application android:allowBackup="false" android:label="𝓜𝓐𝓝𝓦𓄿𝓐𝓗𝓜𝓔𝓓" android:theme="@style/AppTheme">
         <meta-data android:name="com.google.mlkit.vision.DEPENDENCIES" android:value="ocr" />
         <activity android:name=".NotificationSettingsActivity" android:exported="false" />
         <service android:name=".AppNotificationListenerService" android:label="MANW — إشعارات التطبيقات المختارة" android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" android:exported="true">

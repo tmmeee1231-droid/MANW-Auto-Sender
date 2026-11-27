@@ -66,6 +66,8 @@ class MainActivity : AppCompatActivity() {
         root.addView(enableVolumeSend)
         val disableVolumeSend = Button(this).apply { text = "إيقاف الإرسال بزر خفض الصوت" }
         root.addView(disableVolumeSend)
+        val notificationSettings = Button(this).apply { text = "اختيار التطبيقات لإرسال إشعاراتها إلى البوت" }
+        root.addView(notificationSettings)
         root.addView(label("بعد التفعيل اسمح لخدمة إمكانية الوصول الخاصة بالتطبيق. افتح كاميرا الهاتف العادية وصوّر؛ الضغط المطوّل على زر خفض الصوت يرسل الصور الجديدة منذ التفعيل إلى تيليجرام. أثناء تفعيل الوضع سيُستخدم زر خفض الصوت للإرسال بدل خفض مستوى الصوت."))
         root.addView(label("بعد تشغيل المزامنة، يراقب التطبيق الصور الجديدة تلقائيًا بخدمة خلفية وإشعار دائم، ويرسلها عند اكتشافها دون الضغط على زر. يوجد فحص احتياطي كل 15 دقيقة. اسمح بالوصول إلى كل الصور؛ الوصول المحدود للصور المختارة لن يتيح مراقبة بقية المعرض. قد يوقف أندرويد الخدمة عند فرض إيقاف التطبيق أو تقييد البطارية."))
         setContentView(ScrollView(this).apply { addView(root) })
@@ -111,6 +113,9 @@ class MainActivity : AppCompatActivity() {
         disableVolumeSend.setOnClickListener {
             prefs.edit().putBoolean("manual_send_enabled", false).apply()
             toast("تم إيقاف الإرسال بزر خفض الصوت.")
+        }
+        notificationSettings.setOnClickListener {
+            startActivity(Intent(this, NotificationSettingsActivity::class.java))
         }
         test.setOnClickListener {
             val t = token.text.toString().trim()

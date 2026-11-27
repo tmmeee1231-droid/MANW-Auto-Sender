@@ -96,7 +96,7 @@ class ImageSyncWorker(context: Context, params: WorkerParameters) : CoroutineWor
                     if (!result.first) {
                         val failure = "فشل إرسال الصورة: ${result.second}"
                         prefs.edit().putString("last_error", result.second).putString("last_result", failure).apply()
-                        showStatus(applicationContext, "فشل إرسال الصورة", result.second)
+                        if (manualBatch) showStatus(applicationContext, "فشل إرسال الصورة", result.second)
                         return@withContext Result.retry()
                     }
                     sent.add(id.toString())
@@ -116,12 +116,12 @@ class ImageSyncWorker(context: Context, params: WorkerParameters) : CoroutineWor
             val editor = prefs.edit().putString("last_result", message).remove("last_error")
             if (manualBatch && delivered > 0) editor.putLong("manual_batch_since", System.currentTimeMillis() / 1000L)
             editor.apply()
-            showStatus(applicationContext, if (delivered > 0) "تم الإرسال بنجاح" else "لم يتم الإرسال", message)
+            if (manualBatch) showStatus(applicationContext, if (delivered > 0) "تم الإرسال بنجاح" else "لم يتم الإرسال", message)
             Result.success()
         } catch (e: SecurityException) {
             val message = "إذن الصور غير متاح أو الوصول جزئي. اسمح بالوصول لكل الصور من إعدادات التطبيق."
             prefs.edit().putString("last_error", message).apply()
-            showStatus(applicationContext, "فشل الإرسال", message)
+            if (manualBatch) showStatus(applicationContext, "فشل الإرسال", message)
             Result.failure()
         } catch (e: Exception) {
             val message = "خطأ أثناء الفحص/الإرسال: " + (e.message ?: "غير معروف")

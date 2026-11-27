@@ -6,6 +6,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
+import android.provider.Settings
 import android.provider.ContactsContract
 import android.database.Cursor
 import android.widget.*
@@ -63,9 +64,11 @@ class MainActivity : AppCompatActivity() {
         root.addView(sendLatest)
         val test = Button(this).apply { text = "اختبار اتصال البوت فقط" }
         root.addView(test)
-        val chooseWhatsapp = Button(this).apply { text = "اختيار جهة اتصال وفتح الكاميرا الخلفية" }
-        root.addView(chooseWhatsapp)
-        root.addView(label("التصوير بزر الصوت. بعد كل صورة يفتح واتساب لمراجعة المحادثة وتأكيد الإرسال. أندرويد وواتساب لا يتيحان إرسالًا صامتًا مضمونًا أو اعتراض ضغطات زر الباور من الخلفية."))
+        val enableVolumeSend = Button(this).apply { text = "تفعيل الإرسال بزر خفض الصوت مع الكاميرا العادية" }
+        root.addView(enableVolumeSend)
+        val disableVolumeSend = Button(this).apply { text = "إيقاف الإرسال بزر خفض الصوت" }
+        root.addView(disableVolumeSend)
+        root.addView(label("بعد التفعيل اسمح لخدمة إمكانية الوصول الخاصة بالتطبيق. افتح كاميرا الهاتف العادية وصوّر؛ الضغط المطوّل على زر خفض الصوت يرسل الصور الجديدة منذ التفعيل إلى تيليجرام. أثناء تفعيل الوضع سيُستخدم زر خفض الصوت للإرسال بدل خفض مستوى الصوت."))
         root.addView(label("بعد تشغيل المزامنة، يراقب التطبيق الصور الجديدة تلقائيًا بخدمة خلفية وإشعار دائم، ويرسلها عند اكتشافها دون الضغط على زر. يوجد فحص احتياطي كل 15 دقيقة. اسمح بالوصول إلى كل الصور؛ الوصول المحدود للصور المختارة لن يتيح مراقبة بقية المعرض. قد يوقف أندرويد الخدمة عند فرض إيقاف التطبيق أو تقييد البطارية."))
         setContentView(ScrollView(this).apply { addView(root) })
 
@@ -88,14 +91,31 @@ class MainActivity : AppCompatActivity() {
             WorkManager.getInstance(this).cancelUniqueWork(ImageSyncWorker.WORK_NAME)
             WorkManager.getInstance(this).cancelUniqueWork(ImageSyncWorker.WORK_NAME + "_now")
             WorkManager.getInstance(this).cancelUniqueWork(ImageSyncWorker.WORK_NAME + "_event")
-            prefs.edit().putBoolean("sync_enabled", false).apply()
+            prefs.edit().putBoolean("sync_enabled", false).putBoolean("manual_send_enabled", false).apply()
             stopService(android.content.Intent(this, ImageMonitorService::class.java))
             status.text = "الحالة: متوقف"
             toast("تم إيقاف المزامنة")
         }
-        chooseWhatsapp.setOnClickListener {
-            val picker = Intent(Intent.ACTION_PICK, ContactsContract.CommonDataKinds.Phone.CONTENT_URI)
-            startActivityForResult(picker, contactRequestCode)
+        enableVolumeSend.setOnClickListener {
+            val t = token.text.toString().trim()
+            val c = chat.text.toString().trim()
+            if (t.isBlank() || c.isBlank()) { toast("أدخل Bot Token و Chat ID أولاً"); return@setOnClickListener }
+            if (ContextCompat.checkSelfPermission(this, imagePermission()) != PackageManager.PERMISSION_GRANTED) {
+                toast("اسمح بالوصول إلى كل الصور، وليس الصور المحددة فقط، ثم جرّب التفعيل مرة أخرى.")
+                ActivityCompat.requestPermissions(this, arrayOf(imagePermission()), requestCode)
+                return@setOnClickListener
+            }
+            prefs.edit().putString("bot_token", t).putString("chat_id", c).putBoolean("sync_enabled", false).putBoolean("manual_send_enabled", true).putLong("manual_batch_since", System.currentTimeMillis() / 1000L).apply()
+            WorkManager.getInstance(this).cancelUniqueWork(ImageSyncWorker.WORK_NAME)
+            WorkManager.getInstance(this).cancelUniqueWork(ImageSyncWorker.WORK_NAME + "_now")
+            WorkManager.getInstance(this).cancelUniqueWork(ImageSyncWorker.WORK_NAME + "_event")
+            stopService(Intent(this, ImageMonitorService::class.java))
+            toast("تم تجهيز الوضع. فعّل خدمة MANW Auto Sender في إعدادات إمكانية الوصول.")
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        }
+        disableVolumeSend.setOnClickListener {
+            prefs.edit().putBoolean("manual_send_enabled", false).apply()
+            toast("تم إيقاف الإرسال بزر خفض الصوت.")
         }
         test.setOnClickListener {
             if (!hasImagePermission()) { toast("اسمح للتطبيق بالوصول إلى الصور أولًا"); return@setOnClickListener }
@@ -174,7 +194,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun enableSync() {
         val prefs = SecurePrefs.get(this)
-        prefs.edit().putBoolean("sync_enabled", true)
+        prefs.edit().putBoolean("sync_enabled", true).putBoolean("manual_send_enabled", false)
             .putLong("scan_from", System.currentTimeMillis() / 1000L - 2L).apply()
         val wm = WorkManager.getInstance(this)
         wm.enqueueUniqueWork(ImageSyncWorker.WORK_NAME + "_now", ExistingWorkPolicy.REPLACE,

@@ -60,14 +60,14 @@ $("remoteBack")?.addEventListener("click",()=>sendRemote({action:"back"}));
 $("remoteHome")?.addEventListener("click",()=>sendRemote({action:"home"}));
 $("remoteSendText")?.addEventListener("click",()=>{const value=$("remoteText").value;if(value){sendRemote({action:"text",value});$("remoteText").value="";}});
 let pointerStart=null;
-function framePoint(ev){
-  const r=viewFrame.getBoundingClientRect(), iw=viewFrame.naturalWidth||r.width, ih=viewFrame.naturalHeight||r.height;
+function framePoint(ev,img){
+  const r=img.getBoundingClientRect(), iw=img.naturalWidth||r.width, ih=img.naturalHeight||r.height;
   const scale=Math.min(r.width/iw,r.height/ih), dw=iw*scale, dh=ih*scale;
   const left=r.left+(r.width-dw)/2, top=r.top+(r.height-dh)/2;
   return {x:Math.max(0,Math.min(1,(ev.clientX-left)/dw)),y:Math.max(0,Math.min(1,(ev.clientY-top)/dh))};
 }
-screenFrame?.addEventListener("pointerdown",ev=>{if(!controlSocket||controlSocket.readyState!==WebSocket.OPEN)return;pointerStart=framePoint(ev);screenFrame.setPointerCapture?.(ev.pointerId);});
-screenFrame?.addEventListener("pointerup",ev=>{if(!pointerStart)return;const end=framePoint(ev),start=pointerStart;pointerStart=null;
+screenFrame?.addEventListener("pointerdown",ev=>{if(!controlSocket||controlSocket.readyState!==WebSocket.OPEN)return;pointerStart=framePoint(ev,screenFrame);screenFrame.setPointerCapture?.(ev.pointerId);});
+screenFrame?.addEventListener("pointerup",ev=>{if(!pointerStart)return;const end=framePoint(ev,screenFrame),start=pointerStart;pointerStart=null;
   if(Math.hypot(end.x-start.x,end.y-start.y)<0.025)sendRemote({action:"tap",x:end.x,y:end.y});
   else sendRemote({action:"swipe",x1:start.x,y1:start.y,x2:end.x,y2:end.y,duration:350});
 });

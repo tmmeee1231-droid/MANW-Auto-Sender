@@ -158,7 +158,11 @@ class ImageMonitorService : Service() {
     }
 
     private fun showCameraRequestNotification() {
-        val cameraIntent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
+        // Launch the phone's normal camera UI directly, rather than the
+        // capture-for-result flow which may show a chooser or immediately finish.
+        val cameraIntent = Intent(MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        }
         val cameraPendingIntent = PendingIntent.getActivity(
             this, 3110, cameraIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0)

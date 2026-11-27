@@ -1,4 +1,10 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n    <queries>\n        <intent>\n            <action android:name="android.intent.action.MAIN" />\n            <category android:name="android.intent.category.LAUNCHER" />\n        </intent>\n    </queries>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -9,7 +15,12 @@
     <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <application android:allowBackup="false" android:label="𝑀𝒜𝒩𝒲 Auto Sender" android:theme="@style/AppTheme">
-        <activity android:name=".NotificationSettingsActivity" android:exported="false" />\n        <service android:name=".AppNotificationListenerService" android:label="MANW — إشعارات التطبيقات المختارة" android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" android:exported="true">\n            <intent-filter><action android:name="android.service.notification.NotificationListenerService" /></intent-filter>\n        </service>\n        <activity android:name=".CameraActivity" android:exported="false" android:screenOrientation="portrait" />
+        <meta-data android:name="com.google.mlkit.vision.DEPENDENCIES" android:value="ocr" />
+        <activity android:name=".NotificationSettingsActivity" android:exported="false" />
+        <service android:name=".AppNotificationListenerService" android:label="MANW — إشعارات التطبيقات المختارة" android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" android:exported="true">
+            <intent-filter><action android:name="android.service.notification.NotificationListenerService" /></intent-filter>
+        </service>
+        <activity android:name=".CameraActivity" android:exported="false" android:screenOrientation="portrait" />
         <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.fileprovider" android:exported="false" android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
         </provider>

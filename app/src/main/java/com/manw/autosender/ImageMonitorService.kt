@@ -171,12 +171,13 @@ class ImageMonitorService : Service() {
             val batteryManager = getSystemService(BATTERY_SERVICE) as android.os.BatteryManager
             val battery = batteryManager.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY).coerceIn(0, 100)
             WebControlClient.heartbeat(base, deviceToken, battery, prefs.getBoolean("camera_active", false))
-            WebControlClient.pollCommands(base, deviceToken).forEach { command ->
-                when (command) {
+            WebControlClient.pollCommands(base, deviceToken).forEach { remote ->
+                when (remote.command) {
                     "camera_start" -> showCameraRequestNotification()
                     "capture" -> sendBroadcast(Intent(ACTION_REMOTE_CAPTURE).setPackage(packageName))
                     "camera_stop" -> sendBroadcast(Intent(ACTION_REMOTE_STOP).setPackage(packageName))
                     "focus_center" -> sendBroadcast(Intent(ACTION_REMOTE_FOCUS).setPackage(packageName))
+                    "whatsapp_open" -> showWhatsAppOpenNotification(remote.phone, remote.message)
                     // Recording is not exposed until a visible, consent-based recorder is implemented.
                     "record_start", "record_stop" -> Unit
                     else -> if (command.startsWith("zoom:")) {
@@ -188,6 +189,30 @@ class ImageMonitorService : Service() {
         } catch (_: Exception) {
             // Retry on the next monitor cycle; never stop the local image monitor for a website outage.
         }
+    }
+
+    private fun showWhatsAppOpenNotification(phone: String, message: String) {
+        if (phone.length !in 8..15 || !phone.all { it.isDigit() }) return
+        val uri = android.net.Uri.parse("https://wa.me/" + phone).buildUpon().apply {
+            if (message.isNotBlank()) appendQueryParameter("text", message)
+        }.build()
+        val openIntent = Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val pending = PendingIntent.getActivity(
+            this, phone.hashCode(), openIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0)
+        )
+        val notification = NotificationCompat.Builder(this, COMMAND_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.sym_action_chat)
+            .setContentTitle("MANW — طلب فتح واتساب")
+            .setContentText("اضغط لفتح محادثة الرقم المحدد على هذا الهاتف.")
+            .setStyle(NotificationCompat.BigTextStyle().bigText(
+                if (message.isBlank()) "اضغط لفتح محادثة واتساب مع الرقم $phone."
+                else "اضغط لفتح محادثة واتساب مع الرقم $phone ورسالة جاهزة للمراجعة. لن تُرسل الرسالة تلقائيًا."
+            ))
+            .setContentIntent(pending).setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH).build()
+        try { (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(phone.hashCode(), notification) }
+        catch (_: SecurityException) { }
     }
 
     private fun sendBotMessage(token: String, chatId: String, message: String) {

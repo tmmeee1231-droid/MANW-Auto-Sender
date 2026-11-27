@@ -73,7 +73,6 @@ class ImageSyncWorker(context: Context, params: WorkerParameters) : CoroutineWor
         val manualBatch = inputData.getBoolean(KEY_MANUAL_BATCH, false)
         val manualId = inputData.getLong(KEY_IMAGE_ID, -1L)
         if (!prefs.getBoolean("sync_enabled", false) && !manualBatch) return@withContext Result.success()
-        if (manualBatch && !prefs.getBoolean("manual_send_enabled", false)) return@withContext Result.success()
         val token = prefs.getString("bot_token", "") ?: ""
         val chatId = prefs.getString("chat_id", "") ?: ""
         if (token.isBlank() || chatId.isBlank()) return@withContext Result.failure()

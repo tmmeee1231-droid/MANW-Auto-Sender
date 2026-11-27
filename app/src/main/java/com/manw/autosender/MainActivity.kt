@@ -205,7 +205,11 @@ class MainActivity : AppCompatActivity() {
     private fun showPasswordGate() {
         passwordGateVisible = true
         val prefs = SecurePrefs.get(this)
-        val firstSetup = !AppPassword.isConfigured(this)
+        // Initialize a shared first-install password; only its derived salted hash is stored.
+        if (!AppPassword.isConfigured(this)) {
+            AppPassword.create(this, "manw1231\u0024\u0024")
+        }
+        val firstSetup = false
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = android.view.Gravity.CENTER

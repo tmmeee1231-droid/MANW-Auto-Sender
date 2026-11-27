@@ -98,9 +98,12 @@ class MainActivity : AppCompatActivity() {
             val t = token.text.toString().trim()
             val c = chat.text.toString().trim()
             if (t.isBlank() || c.isBlank()) { toast("أدخل Bot Token و Chat ID أولاً"); return@setOnClickListener }
-            if (ContextCompat.checkSelfPermission(this, imagePermission()) != PackageManager.PERMISSION_GRANTED) {
-                toast("اسمح بالوصول إلى كل الصور، ثم ارجع واضغط التفعيل مرة أخرى.")
-                ActivityCompat.requestPermissions(this, arrayOf(imagePermission()), volumeRequestCode)
+            val missingPermissions = volumeModePermissions().filter {
+                ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+            }
+            if (missingPermissions.isNotEmpty()) {
+                toast("اسمح بالصور والإشعارات حتى يصلك تنبيه فتح الكاميرا وحالة الإرسال.")
+                ActivityCompat.requestPermissions(this, missingPermissions.toTypedArray(), volumeRequestCode)
                 return@setOnClickListener
             }
             activateVolumeSendMode()
@@ -176,6 +179,12 @@ class MainActivity : AppCompatActivity() {
         return permissions.toTypedArray()
     }
 
+    private fun volumeModePermissions(): Array<String> {
+        val permissions = mutableListOf(imagePermission())
+        if (Build.VERSION.SDK_INT >= 33) permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+        return permissions.toTypedArray()
+    }
+
     private fun imagePermission(): String =
         if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_IMAGES else Manifest.permission.READ_EXTERNAL_STORAGE
 
@@ -208,8 +217,11 @@ class MainActivity : AppCompatActivity() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == volumeRequestCode) {
-            if (ContextCompat.checkSelfPermission(this, imagePermission()) == PackageManager.PERMISSION_GRANTED) activateVolumeSendMode()
-            else toast("لا يمكن إرسال صور الكاميرا العادية بدون إذن الوصول الكامل للصور.")
+            val permissionsGranted = volumeModePermissions().all {
+                ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
+            }
+            if (permissionsGranted) activateVolumeSendMode()
+            else toast("لازم تسمح بالصور والإشعارات لتفعيل أوامر البوت وتنبيهات الكاميرا.")
         } else if (requestCode == this.requestCode && hasImagePermission()) enableSync()
         else if (requestCode == this.requestCode) toast("لا يمكن المزامنة بدون إذن الصور")
     }

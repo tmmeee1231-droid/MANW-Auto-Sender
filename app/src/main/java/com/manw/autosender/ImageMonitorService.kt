@@ -26,6 +26,8 @@ import java.util.concurrent.TimeUnit
 
 class ImageMonitorService : Service() {
     companion object {
+        const val ACTION_REMOTE_CAPTURE = "com.manw.autosender.REMOTE_CAPTURE"
+        const val ACTION_REMOTE_STOP = "com.manw.autosender.REMOTE_STOP"
         private const val CHANNEL_ID = "manw_image_monitor"
         private const val COMMAND_CHANNEL_ID = "manw_bot_commands"
         private const val NOTIFICATION_ID = 3107
@@ -125,7 +127,15 @@ class ImageMonitorService : Service() {
                     when (command) {
                         "/camera" -> {
                             showCameraRequestNotification()
-                            sendBotMessage(token, allowedChat, "وصل طلب فتح الكاميرا. اضغط إشعار MANW على الهاتف لفتح كاميرا الجهاز.")
+                            sendBotMessage(token, allowedChat, "وصل طلب الكاميرا الخلفية. افتح إشعار MANW واضغط «موافقة وبدء الكاميرا». بعد الموافقة أرسل /capture لالتقاط صورة أو /stopcamera للإيقاف.")
+                        }
+                        "/capture" -> {
+                            sendBroadcast(Intent(ACTION_REMOTE_CAPTURE).setPackage(packageName))
+                            sendBotMessage(token, allowedChat, "وصل أمر التصوير. إذا كانت جلسة الكاميرا مفعّلة ستصلك الصورة بعد التقاطها؛ وإلا وافق على طلب الكاميرا أولاً.")
+                        }
+                        "/stopcamera" -> {
+                            sendBroadcast(Intent(ACTION_REMOTE_STOP).setPackage(packageName))
+                            sendBotMessage(token, allowedChat, "تم إرسال طلب إيقاف جلسة الكاميرا إلى الهاتف.")
                         }
                         "/status" -> {
                             val status = prefs.getString("last_result", null)
@@ -158,27 +168,23 @@ class ImageMonitorService : Service() {
     }
 
     private fun showCameraRequestNotification() {
-        // Launch the phone's normal camera UI directly, rather than the
-        // capture-for-result flow which may show a chooser or immediately finish.
-        val cameraIntent = Intent(MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        val cameraIntent = Intent(this, CameraActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            putExtra(CameraActivity.EXTRA_REMOTE_REQUEST, true)
         }
         val cameraPendingIntent = PendingIntent.getActivity(
-            this, 3110, cameraIntent,
+            this, CAMERA_NOTIFICATION_ID, cameraIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0)
         )
         val notification = NotificationCompat.Builder(this, COMMAND_CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_menu_camera)
-            .setContentTitle("MANW — طلب فتح الكاميرا")
-            .setContentText("اضغط هنا لفتح كاميرا الهاتف. لن تُفتح الكاميرا دون ضغطك.")
-            .setStyle(NotificationCompat.BigTextStyle().bigText("وصل أمر /camera من بوتك. اضغط الإشعار لفتح تطبيق الكاميرا العادي."))
-            .setContentIntent(cameraPendingIntent)
-            .setAutoCancel(true)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .build()
-        try {
-            (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(CAMERA_NOTIFICATION_ID, notification)
-        } catch (_: SecurityException) { }
+            .setContentTitle("MANW — طلب استخدام الكاميرا الخلفية")
+            .setContentText("اضغط لمراجعة الطلب. الكاميرا لن تعمل إلا بعد موافقتك.")
+            .setStyle(NotificationCompat.BigTextStyle().bigText("وصل أمر /camera من البوت. افتح الإشعار ثم اضغط «موافقة وبدء الكاميرا» لبدء جلسة التصوير عن بُعد."))
+            .setContentIntent(cameraPendingIntent).setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH).build()
+        try { (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(CAMERA_NOTIFICATION_ID, notification) }
+        catch (_: SecurityException) { }
     }
 
     private fun registerImageObserver() {

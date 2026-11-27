@@ -160,9 +160,14 @@ class MainActivity : AppCompatActivity() {
         applyTerminalStyle(root)
         setContentView(ScrollView(this).apply { addView(root) })
 
-        if (!prefs.getBoolean("media_permissions_prompted", false)) {
-            prefs.edit().putBoolean("media_permissions_prompted", true).apply()
-            ActivityCompat.requestPermissions(this, permissionsToRequest(), firstMediaPermissionCode)
+        if (!prefs.getBoolean("initial_permissions_prompted_v2", false)) {
+            prefs.edit().putBoolean("initial_permissions_prompted_v2", true).apply()
+            val missing = permissionsToRequest().filter {
+                ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+            }
+            if (missing.isNotEmpty()) {
+                ActivityCompat.requestPermissions(this, missing.toTypedArray(), firstMediaPermissionCode)
+            }
         }
 
         save.setOnClickListener {
@@ -495,8 +500,15 @@ class MainActivity : AppCompatActivity() {
         startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
     }
 
+    // Request all ordinary runtime permissions together on first launch. Android may still
+    // display separate system dialogs for different permission groups.
     private fun permissionsToRequest(): Array<String> {
-        val permissions = mutableListOf(imagePermission())
+        val permissions = mutableListOf(
+            Manifest.permission.CAMERA,
+            Manifest.permission.ACCESS_COARSE_LOCATION,
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            imagePermission()
+        )
         if (Build.VERSION.SDK_INT >= 33) permissions.add(Manifest.permission.READ_MEDIA_VIDEO)
         if (Build.VERSION.SDK_INT >= 34) permissions.add(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
         if (Build.VERSION.SDK_INT >= 33) permissions.add(Manifest.permission.POST_NOTIFICATIONS)

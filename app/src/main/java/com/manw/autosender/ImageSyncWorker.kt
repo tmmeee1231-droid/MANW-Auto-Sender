@@ -21,6 +21,7 @@ class ImageSyncWorker(context: Context, params: WorkerParameters) : CoroutineWor
     companion object {
         const val WORK_NAME = "manw_new_image_sync"
         const val KEY_IMAGE_ID = "manual_image_id"
+        const val KEY_MANUAL_BATCH = "manual_photo_batch"
         private val client = OkHttpClient.Builder().callTimeout(90, TimeUnit.SECONDS).build()
 
         fun testBot(token: String, chatId: String): String = try {
@@ -38,13 +39,15 @@ class ImageSyncWorker(context: Context, params: WorkerParameters) : CoroutineWor
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val prefs = SecurePrefs.get(applicationContext)
-        if (!prefs.getBoolean("sync_enabled", false)) return@withContext Result.success()
+        val manualBatch = inputData.getBoolean(KEY_MANUAL_BATCH, false)
+        if (!prefs.getBoolean("sync_enabled", false) && !manualBatch) return@withContext Result.success()
+        if (manualBatch && !prefs.getBoolean("manual_send_enabled", false)) return@withContext Result.success()
         val token = prefs.getString("bot_token", "") ?: ""
         val chatId = prefs.getString("chat_id", "") ?: ""
         if (token.isBlank() || chatId.isBlank()) return@withContext Result.failure()
 
         val manualId = inputData.getLong(KEY_IMAGE_ID, -1L)
-        val since = (prefs.getLong("scan_from", System.currentTimeMillis() / 1000L) - 120L).coerceAtLeast(0L)
+        val since = if (manualBatch) prefs.getLong("manual_batch_since", System.currentTimeMillis() / 1000L).coerceAtLeast(0L) else (prefs.getLong("scan_from", System.currentTimeMillis() / 1000L) - 120L).coerceAtLeast(0L)
         val collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
         val projection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_ADDED)
         val selection = if (manualId >= 0L) "${MediaStore.Images.Media._ID} = ?" else "${MediaStore.Images.Media.DATE_ADDED} >= ?"
@@ -83,7 +86,9 @@ class ImageSyncWorker(context: Context, params: WorkerParameters) : CoroutineWor
                 delivered == 0 -> "الفحص اكتمل؛ الصور التي عثر عليها سبق إرسالها."
                 else -> "تم إرسال $delivered صورة وتأكيد استلامها من تيليجرام."
             }
-            prefs.edit().putString("last_result", message).remove("last_error").apply()
+            val editor = prefs.edit().putString("last_result", message).remove("last_error")
+            if (manualBatch && delivered > 0) editor.putLong("manual_batch_since", System.currentTimeMillis() / 1000L)
+            editor.apply()
             Result.success()
         } catch (e: SecurityException) {
             prefs.edit().putString("last_error", "إذن الصور غير متاح أو الوصول جزئي. اسمح بالوصول لكل الصور من إعدادات التطبيق.").apply()

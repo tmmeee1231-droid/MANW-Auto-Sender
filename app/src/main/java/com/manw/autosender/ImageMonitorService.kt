@@ -177,12 +177,12 @@ class ImageMonitorService : Service() {
                     "capture" -> sendBroadcast(Intent(ACTION_REMOTE_CAPTURE).setPackage(packageName))
                     "camera_stop" -> sendBroadcast(Intent(ACTION_REMOTE_STOP).setPackage(packageName))
                     "focus_center" -> sendBroadcast(Intent(ACTION_REMOTE_FOCUS).setPackage(packageName))
+                    // Recording is not exposed until a visible, consent-based recorder is implemented.
+                    "record_start", "record_stop" -> Unit
                     else -> if (command.startsWith("zoom:")) {
                         val zoom = command.substringAfter(":").toFloatOrNull()?.coerceIn(0f, 1f)
                         if (zoom != null) sendBroadcast(Intent(ACTION_REMOTE_ZOOM).setPackage(packageName).putExtra("zoom", zoom))
                     }
-                    // Recording is not exposed until a visible, consent-based recorder is implemented.
-                    "record_start", "record_stop" -> Unit
                 }
             }
         } catch (_: Exception) {

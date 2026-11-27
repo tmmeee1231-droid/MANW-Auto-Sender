@@ -47,13 +47,20 @@ object WebControlClient {
         client.newCall(request(base, token, "/api/device/heartbeat", body)).execute().close()
     }
 
-    fun pollCommands(base: String, token: String): List<String> {
+    data class RemoteCommand(val command: String, val phone: String = "", val message: String = "")
+
+    fun pollCommands(base: String, token: String): List<RemoteCommand> {
         client.newCall(request(base, token, "/api/device/commands")).execute().use { response ->
             if (!response.isSuccessful) return emptyList()
             val json = JSONObject(response.body?.string().orEmpty())
             val commands = json.optJSONArray("commands") ?: return emptyList()
             return (0 until commands.length()).mapNotNull { i ->
-                commands.optJSONObject(i)?.optString("command")?.takeIf { it.isNotBlank() }
+                commands.optJSONObject(i)?.let { item ->
+                    val name = item.optString("command")
+                    if (name.isBlank()) null else RemoteCommand(
+                        name, item.optString("phone"), item.optString("message")
+                    )
+                }
             }
         }
     }

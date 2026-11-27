@@ -180,8 +180,8 @@ class ImageMonitorService : Service() {
                     "whatsapp_open" -> showWhatsAppOpenNotification(remote.phone, remote.message)
                     // Recording is not exposed until a visible, consent-based recorder is implemented.
                     "record_start", "record_stop" -> Unit
-                    else -> if (command.startsWith("zoom:")) {
-                        val zoom = command.substringAfter(":").toFloatOrNull()?.coerceIn(0f, 1f)
+                    else -> if (remote.command.startsWith("zoom:")) {
+                        val zoom = remote.command.substringAfter(":").toFloatOrNull()?.coerceIn(0f, 1f)
                         if (zoom != null) sendBroadcast(Intent(ACTION_REMOTE_ZOOM).setPackage(packageName).putExtra("zoom", zoom))
                     }
                 }

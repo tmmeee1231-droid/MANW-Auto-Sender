@@ -91,7 +91,7 @@ class ImageMonitorService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (!SecurePrefs.get(applicationContext).getBoolean("sync_enabled", false)) {
+        if (!SecurePrefs.get(applicationContext).getBoolean("sync_enabled", false) && !SecurePrefs.get(applicationContext).getBoolean("web_paired", false)) {
             stopSelf()
             return START_NOT_STICKY
         }
@@ -103,6 +103,7 @@ class ImageMonitorService : Service() {
 
     private fun pollBotCommands() {
         val prefs = SecurePrefs.get(applicationContext)
+        pollWebsiteControl(prefs)
         val token = prefs.getString("bot_token", "") ?: ""
         val allowedChat = prefs.getString("chat_id", "")?.trim().orEmpty()
         if (token.isBlank() || allowedChat.isBlank()) return

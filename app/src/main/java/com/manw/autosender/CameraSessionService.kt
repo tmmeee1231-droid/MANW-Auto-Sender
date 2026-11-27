@@ -70,6 +70,7 @@ class CameraSessionService : Service(), LifecycleOwner {
     @Volatile private var imageCapture: ImageCapture? = null
     @Volatile private var cameraControl: CameraControl? = null
     private val analysisExecutor = Executors.newSingleThreadExecutor()
+    private val progressExecutor = Executors.newSingleThreadExecutor()
     private val analyzing = AtomicBoolean(false)
     @Volatile private var lastAutoFocusAt = 0L
     @Volatile private var lastTextAnalysisAt = 0L
@@ -132,8 +133,8 @@ class CameraSessionService : Service(), LifecycleOwner {
             try {
                 val provider = future.get()
                 val capture = ImageCapture.Builder()
-                    .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
-                    .setJpegQuality(100)
+                    .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                    .setJpegQuality(88)
                     .build()
                 val analysis = ImageAnalysis.Builder()
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
@@ -332,7 +333,7 @@ class CameraSessionService : Service(), LifecycleOwner {
                     updateNotification("جلسة الكاميرا نشطة. أرسل /capture لإعادة المحاولة.")
                 }
             })
-        }, 850L)
+        }, 150L)
     }
 
     private fun uploadPhoto(file: File, caption: String): Pair<Boolean, String> {
@@ -365,7 +366,7 @@ class CameraSessionService : Service(), LifecycleOwner {
                                 if (percent >= lastReportedPercent + 5 || now - lastReportedAt >= 1200L) {
                                     lastReportedPercent = percent
                                     lastReportedAt = now
-                                    editUploadProgress(token, chatId, progressMessageId, percent)
+                                    progressExecutor.execute { editUploadProgress(token, chatId, progressMessageId, percent) }
                                 }
                             }
                         }
@@ -492,6 +493,7 @@ class CameraSessionService : Service(), LifecycleOwner {
         cameraControl = null
         SecurePrefs.get(this).edit().putBoolean("camera_active", false).apply()
         analysisExecutor.shutdown()
+        progressExecutor.shutdown()
         if (receiverRegistered) {
             try { unregisterReceiver(commandReceiver) } catch (_: Exception) { }
             receiverRegistered = false

@@ -55,7 +55,7 @@ class MainActivity : AppCompatActivity() {
         })
         root.addView(TextView(this).apply {
             text = android.text.SpannableString("مـن هـنـا تـبـدأ الـسـيـطـرة").apply {
-                setSpan(android.text.style.ForegroundColorSpan(0xFFFF2020.toInt()), 6, 9, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                setSpan(android.text.style.ForegroundColorSpan(0xFFFF2020.toInt()), 4, 9, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 setSpan(android.text.style.StyleSpan(android.graphics.Typeface.BOLD), 0, length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
             textSize = 23f

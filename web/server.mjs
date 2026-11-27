@@ -183,7 +183,7 @@ app.post("/api/device/media", requireDevice, upload.single("file"), async (req, 
   await saveState(); broadcast({ type: "media", item }); res.json({ ok: true, item });
 });
 app.post("/api/control", requireAuth, (req, res) => {
-  const allowed = new Set(["camera_start", "camera_stop", "capture", "record_start", "record_stop", "whatsapp_open"]);
+  const allowed = new Set(["camera_start", "camera_stop", "capture", "record_start", "record_stop", "whatsapp_open", "screen_start", "screen_stop"]);
   const command = String(req.body?.command || "");
   if (!allowed.has(command)) return res.status(400).json({ error: "أمر غير مدعوم" });
   if (!state.paired) return res.status(409).json({ error: "اربط الهاتف أولاً من التطبيق" });
@@ -226,7 +226,7 @@ server.on("upgrade", (req, socket, head) => {
         ws.on("message", data => {
           try {
             const msg = JSON.parse(data.toString());
-            if (msg.type === "frame" && typeof msg.jpeg === "string" && msg.jpeg.length < 2_000_000) broadcast({ type: "frame", jpeg: msg.jpeg });
+            if ((msg.type === "frame" || msg.type === "screen_frame") && typeof msg.jpeg === "string" && msg.jpeg.length < 2_000_000) broadcast({ type: "frame", source: msg.type, jpeg: msg.jpeg });
             if (msg.type === "status") { state.lastSeen = new Date().toISOString(); state.cameraActive = !!msg.cameraActive; if (Number.isFinite(msg.battery)) state.battery = msg.battery; }
           } catch {}
         });

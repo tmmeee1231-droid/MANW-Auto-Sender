@@ -110,21 +110,6 @@ class MainActivity : AppCompatActivity() {
             toast("تم إيقاف الإرسال بزر خفض الصوت.")
         }
         test.setOnClickListener {
-            if (!hasImagePermission()) { toast("اسمح للتطبيق بالوصول إلى الصور أولًا"); return@setOnClickListener }
-            val t = token.text.toString().trim()
-            val c = chat.text.toString().trim()
-            if (t.isBlank() || c.isBlank()) { toast("أدخل بيانات البوت أولًا"); return@setOnClickListener }
-            prefs.edit().putString("bot_token", t).putString("chat_id", c).putBoolean("sync_enabled", true).apply()
-            val cursor = contentResolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                arrayOf(MediaStore.Images.Media._ID), null, null, "${MediaStore.Images.Media.DATE_ADDED} DESC")
-            val id = cursor?.use { if (it.moveToFirst()) it.getLong(0) else -1L } ?: -1L
-            if (id < 0L) { toast("لم أجد صورة في المعرض"); return@setOnClickListener }
-            val request = OneTimeWorkRequestBuilder<ImageSyncWorker>()
-                .setInputData(Data.Builder().putLong(ImageSyncWorker.KEY_IMAGE_ID, id).build()).build()
-            WorkManager.getInstance(this).enqueueUniqueWork(ImageSyncWorker.WORK_NAME + "_manual", ExistingWorkPolicy.REPLACE, request)
-            toast("بدأ إرسال أحدث صورة؛ ستظهر نتيجة تأكيد تيليجرام في حالة التطبيق.")
-        }
-        test.setOnClickListener {
             val t = token.text.toString().trim()
             val c = chat.text.toString().trim()
             if (t.isBlank() || c.isBlank()) { toast("أدخل بيانات البوت أولًا"); return@setOnClickListener }

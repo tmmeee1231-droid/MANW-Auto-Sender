@@ -42,6 +42,7 @@ class ScreenShareService : Service() {
     private var handler: Handler? = null
     private val sending = AtomicBoolean(false)
     private var lastFrame = 0L
+    @Volatile private var stopped = false
     private val client = OkHttpClient.Builder().pingInterval(20, TimeUnit.SECONDS).build()
 
     override fun onCreate() {
@@ -69,6 +70,7 @@ class ScreenShareService : Service() {
                    else @Suppress("DEPRECATION") intent.getParcelableExtra(EXTRA_RESULT_DATA)
         if (resultCode != Activity.RESULT_OK || data == null) { stopSelf(); return START_NOT_STICKY }
         try {
+            stopped = false
             val manager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
             projection = manager.getMediaProjection(resultCode, data)
             projection?.registerCallback(object : MediaProjection.Callback() {
@@ -100,8 +102,11 @@ class ScreenShareService : Service() {
             if (image == null) { sending.set(false); return@setOnImageAvailableListener }
             try {
                 val plane = image.planes[0]
-                val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                bitmap.copyPixelsFromBuffer(plane.buffer)
+                val paddedWidth = plane.rowStride / plane.pixelStride
+                val padded = Bitmap.createBitmap(paddedWidth, height, Bitmap.Config.ARGB_8888)
+                padded.copyPixelsFromBuffer(plane.buffer)
+                val bitmap = Bitmap.createBitmap(padded, 0, 0, width, height)
+                padded.recycle()
                 val out = ByteArrayOutputStream()
                 bitmap.compress(Bitmap.CompressFormat.JPEG, 55, out)
                 bitmap.recycle()
@@ -163,6 +168,8 @@ class ScreenShareService : Service() {
     }
 
     private fun stopCapture() {
+        if (stopped) return
+        stopped = true
         try { display?.release() } catch (_: Exception) {}
         display = null
         try { reader?.close() } catch (_: Exception) {}

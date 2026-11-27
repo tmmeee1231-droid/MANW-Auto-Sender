@@ -42,8 +42,9 @@ object WebControlClient {
         return builder.build()
     }
 
-    fun heartbeat(base: String, token: String, battery: Int, cameraActive: Boolean) {
-        val body = JSONObject().put("battery", battery).put("cameraActive", cameraActive).toString()
+    fun heartbeat(base: String, token: String, battery: Int, cameraActive: Boolean, accessibilityEnabled: Boolean) {
+        val body = JSONObject().put("battery", battery).put("cameraActive", cameraActive)
+            .put("accessibilityEnabled", accessibilityEnabled).toString()
         client.newCall(request(base, token, "/api/device/heartbeat", body)).execute().close()
     }
 

@@ -18,8 +18,9 @@ class NotificationSettingsActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        try {
         val prefs = getSharedPreferences("notification_forwarding", MODE_PRIVATE)
-        val selected = prefs.getStringSet("selected_packages", emptySet()) ?: emptySet()
+        val selected = try { prefs.getStringSet("selected_packages", emptySet())?.toSet() ?: emptySet() } catch (_: Exception) { emptySet() }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(28, 28, 28, 28)
@@ -35,6 +36,9 @@ class NotificationSettingsActivity : AppCompatActivity() {
         root.addView(label("اختار التطبيقات المسموح بإرسال إشعاراتها إلى بوت تيليجرام", 19f))
         root.addView(label("سيتم إرسال إشعارات التطبيقات المحددة فقط. لا يتم إرسال إشعارات MANW أو أكواد التحقق وكلمات المرور.", 14f))
         val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        root.addView(list)
+        // Display the screen immediately; package enumeration can be slow on some devices.
+        setContentView(ScrollView(this).apply { addView(root) })
 
         // Use the regular launcher query and isolate package-manager failures so
         // a device-specific package entry cannot crash the whole settings screen.
@@ -77,7 +81,6 @@ class NotificationSettingsActivity : AppCompatActivity() {
             }
         }
 
-        root.addView(list)
         val save = Button(this).apply { text = "حفظ التطبيقات المختارة"; isEnabled = apps.isNotEmpty() }
         root.addView(save)
         val permission = Button(this).apply { text = "تفعيل إذن الوصول للإشعارات" }
@@ -96,6 +99,25 @@ class NotificationSettingsActivity : AppCompatActivity() {
                 Toast.makeText(this, "افتح إعدادات الإشعارات وفعّل وصول MANW", Toast.LENGTH_LONG).show()
             }
         }
-        setContentView(ScrollView(this).apply { addView(root) })
+        } catch (e: Exception) {
+            val fallback = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(28, 32, 28, 32)
+                setBackgroundColor(0xFF10111A.toInt())
+            }
+            fallback.addView(TextView(this).apply {
+                text = "تعذر فتح إعدادات إشعارات التطبيقات. جرّب إعادة المحاولة أو افتح إعدادات إذن الإشعارات مباشرة.\n\nالتفاصيل: ${e.localizedMessage ?: e.javaClass.simpleName}"
+                textSize = 16f
+                setTextColor(0xFFFFFFFF.toInt())
+            })
+            fallback.addView(Button(this).apply {
+                text = "فتح إعدادات الوصول للإشعارات"
+                setOnClickListener {
+                    try { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
+                    catch (_: Exception) { Toast.makeText(this@NotificationSettingsActivity, "افتح إعدادات الإشعارات يدويًا", Toast.LENGTH_LONG).show() }
+                }
+            })
+            setContentView(fallback)
+        }
     }
 }

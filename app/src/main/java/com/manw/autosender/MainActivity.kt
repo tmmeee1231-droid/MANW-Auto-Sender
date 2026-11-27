@@ -258,16 +258,16 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             gravity = android.view.Gravity.CENTER
             setPadding(32, 36, 32, 36)
-            background = android.graphics.drawable.GradientDrawable(
-                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-                intArrayOf(0xFF010402.toInt(), 0xFF06210D.toInt(), 0xFF020804.toInt())
-            ).apply { cornerRadius = 0f }
+            background = android.graphics.drawable.BitmapDrawable(
+                resources,
+                android.graphics.BitmapFactory.decodeResource(resources, R.drawable.manw_hacker_bg)
+            ).apply { alpha = 128 }
         }
         val emblem = TextView(this).apply {
             text = "☠"
             textSize = 76f
             gravity = android.view.Gravity.CENTER
-            setTextColor(0xFFB91C1C.toInt())
+            setTextColor(0xFFFF2020.toInt())
             setShadowLayer(22f, 0f, 0f, 0xFFFF0000.toInt())
         }
         val title = TextView(this).apply {
@@ -275,13 +275,13 @@ class MainActivity : AppCompatActivity() {
             textSize = 27f
             gravity = android.view.Gravity.CENTER
             setTextColor(0xFFF8FAFC.toInt())
-            setShadowLayer(12f, 0f, 0f, 0xFF20C94A.toInt())
+            setShadowLayer(12f, 0f, 0f, 0xFFFF2020.toInt())
         }
         val subtitle = TextView(this).apply {
             text = if (firstSetup) "أنشئ كلمة سر لحماية التطبيق" else "منطقة محمية • أدخل كلمة السر"
             textSize = 16f
             gravity = android.view.Gravity.CENTER
-            setTextColor(0xFF8BFFAA.toInt())
+            setTextColor(0xFFFFB3B3.toInt())
             setPadding(0, 16, 0, 22)
         }
         val password = EditText(this).apply {
@@ -289,7 +289,7 @@ class MainActivity : AppCompatActivity() {
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
             setSingleLine(true)
             setTextColor(-1); setHintTextColor(0xFF76A982.toInt())
-            backgroundTintList = android.content.res.ColorStateList.valueOf(0xFF991B1B.toInt())
+            backgroundTintList = android.content.res.ColorStateList.valueOf(0xFF8B1018.toInt())
         }
         val confirm = EditText(this).apply {
             hint = "أكد كلمة السر"

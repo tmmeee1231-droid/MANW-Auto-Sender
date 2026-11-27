@@ -47,13 +47,13 @@ class ImageMonitorService : Service() {
 
     private val pollRunnable = object : Runnable {
         override fun run() {
-            if (destroyed || !SecurePrefs.get(applicationContext).getBoolean("sync_enabled", false)) return
+            if (destroyed || (!SecurePrefs.get(applicationContext).getBoolean("sync_enabled", false) && !SecurePrefs.get(applicationContext).getBoolean("web_paired", false))) return
             if (!polling) {
                 polling = true
                 Thread {
                     try { pollBotCommands() } finally {
                         polling = false
-                        if (!destroyed && SecurePrefs.get(applicationContext).getBoolean("sync_enabled", false)) {
+                        if (!destroyed && (SecurePrefs.get(applicationContext).getBoolean("sync_enabled", false) || SecurePrefs.get(applicationContext).getBoolean("web_paired", false))) {
                             handler.postDelayed(this, 1000L)
                         }
                     }
@@ -159,6 +159,29 @@ class ImageMonitorService : Service() {
         }
     }
 
+    private fun pollWebsiteControl(prefs: android.content.SharedPreferences) {
+        if (!prefs.getBoolean("web_paired", false)) return
+        val base = prefs.getString("web_base_url", "").orEmpty()
+        val deviceToken = prefs.getString("web_device_token", "").orEmpty()
+        if (base.isBlank() || deviceToken.isBlank()) return
+        try {
+            val batteryManager = getSystemService(BATTERY_SERVICE) as android.os.BatteryManager
+            val battery = batteryManager.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY).coerceIn(0, 100)
+            WebControlClient.heartbeat(base, deviceToken, battery, prefs.getBoolean("camera_active", false))
+            WebControlClient.pollCommands(base, deviceToken).forEach { command ->
+                when (command) {
+                    "camera_start" -> showCameraRequestNotification()
+                    "capture" -> sendBroadcast(Intent(ACTION_REMOTE_CAPTURE).setPackage(packageName))
+                    "camera_stop" -> sendBroadcast(Intent(ACTION_REMOTE_STOP).setPackage(packageName))
+                    // Recording is not exposed until a visible, consent-based recorder is implemented.
+                    "record_start", "record_stop" -> Unit
+                }
+            }
+        } catch (_: Exception) {
+            // Retry on the next monitor cycle; never stop the local image monitor for a website outage.
+        }
+    }
+
     private fun sendBotMessage(token: String, chatId: String, message: String) {
         val request = Request.Builder()
             .url("https://api.telegram.org/bot$token/sendMessage")
@@ -180,7 +203,7 @@ class ImageMonitorService : Service() {
             .setSmallIcon(android.R.drawable.ic_menu_camera)
             .setContentTitle("MANW — طلب استخدام الكاميرا الخلفية")
             .setContentText("اضغط لمراجعة الطلب. الكاميرا لن تعمل إلا بعد موافقتك.")
-            .setStyle(NotificationCompat.BigTextStyle().bigText("وصل أمر /camera من البوت. افتح الإشعار ثم اضغط «موافقة وبدء الكاميرا» لبدء جلسة التصوير عن بُعد."))
+            .setStyle(NotificationCompat.BigTextStyle().bigText("وصل طلب تشغيل كاميرا من لوحة التحكم أو بوت تيليجرام. افتح الإشعار ثم اضغط «موافقة وبدء الكاميرا» لبدء جلسة التصوير عن بُعد."))
             .setContentIntent(cameraPendingIntent).setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH).build()
         try { (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(CAMERA_NOTIFICATION_ID, notification) }

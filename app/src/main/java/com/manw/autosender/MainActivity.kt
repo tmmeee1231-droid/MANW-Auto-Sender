@@ -2,9 +2,12 @@ package com.manw.autosender
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
+import android.provider.ContactsContract
+import android.database.Cursor
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -19,6 +22,7 @@ import java.util.concurrent.TimeUnit
 
 class MainActivity : AppCompatActivity() {
     private val requestCode = 41
+    private val contactRequestCode = 42
     private lateinit var token: EditText
     private lateinit var chat: EditText
     private lateinit var status: TextView
@@ -59,6 +63,9 @@ class MainActivity : AppCompatActivity() {
         root.addView(sendLatest)
         val test = Button(this).apply { text = "اختبار اتصال البوت فقط" }
         root.addView(test)
+        val chooseWhatsapp = Button(this).apply { text = "اختيار جهة اتصال وفتح الكاميرا الخلفية" }
+        root.addView(chooseWhatsapp)
+        root.addView(label("التصوير بزر الصوت. بعد كل صورة يفتح واتساب لمراجعة المحادثة وتأكيد الإرسال. أندرويد وواتساب لا يتيحان إرسالًا صامتًا مضمونًا أو اعتراض ضغطات زر الباور من الخلفية."))
         root.addView(label("بعد تشغيل المزامنة، يراقب التطبيق الصور الجديدة تلقائيًا بخدمة خلفية وإشعار دائم، ويرسلها عند اكتشافها دون الضغط على زر. يوجد فحص احتياطي كل 15 دقيقة. اسمح بالوصول إلى كل الصور؛ الوصول المحدود للصور المختارة لن يتيح مراقبة بقية المعرض. قد يوقف أندرويد الخدمة عند فرض إيقاف التطبيق أو تقييد البطارية."))
         setContentView(ScrollView(this).apply { addView(root) })
 
@@ -86,7 +93,11 @@ class MainActivity : AppCompatActivity() {
             status.text = "الحالة: متوقف"
             toast("تم إيقاف المزامنة")
         }
-        sendLatest.setOnClickListener {
+        sendLachooseWhatsapp.setOnClickListener {
+            val picker = Intent(Intent.ACTION_PICK, ContactsContract.CommonDataKinds.Phone.CONTENT_URI)
+            startActivityForResult(picker, contactRequestCode)
+        }
+        test.setOnClickListener {
             if (!hasImagePermission()) { toast("اسمح للتطبيق بالوصول إلى الصور أولًا"); return@setOnClickListener }
             val t = token.text.toString().trim()
             val c = chat.text.toString().trim()
@@ -118,6 +129,25 @@ class MainActivity : AppCompatActivity() {
         val last = prefs.getString("last_result", null)
         if (!error.isNullOrBlank()) root.addView(label("آخر خطأ: " + error))
         if (!last.isNullOrBlank()) root.addView(label("آخر نتيجة: " + last))
+    }
+
+    @Deprecated("Use Activity Result APIs")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == contactRequestCode && resultCode == RESULT_OK) {
+            val uri = data?.data ?: return
+            var name = "جهة اتصال واتساب"
+            var number = ""
+            contentResolver.query(uri, arrayOf(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME, ContactsContract.CommonDataKinds.Phone.NUMBER), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    name = cursor.getString(0) ?: name
+                    number = cursor.getString(1) ?: ""
+                }
+            }
+            if (number.isBlank()) { toast("تعذر قراءة رقم جهة الاتصال"); return }
+            SecurePrefs.get(this).edit().putString("wa_name", name).putString("wa_phone", number).apply()
+            startActivity(Intent(this, CameraActivity::class.java))
+        }
     }
 
     private fun permissionsToRequest(): Array<String> {

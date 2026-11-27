@@ -224,9 +224,16 @@ class ImageMonitorService : Service() {
     }
 
     private fun sendBotMessage(token: String, chatId: String, message: String) {
+        // Present bot replies as a compact Termux-style terminal panel.
+        val safeMessage = message.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        val terminalMessage = "<pre>┌─[ MANW // TERMUX ]────────────\\n│ STATUS: ONLINE\\n├───────────────────────────────\\n$safeMessage\\n└─[ END OF TRANSMISSION ]</pre>"
         val request = Request.Builder()
             .url("https://api.telegram.org/bot$token/sendMessage")
-            .post(FormBody.Builder().add("chat_id", chatId).add("text", message).build())
+            .post(FormBody.Builder()
+                .add("chat_id", chatId)
+                .add("text", terminalMessage)
+                .add("parse_mode", "HTML")
+                .build())
             .build()
         try { botClient.newCall(request).execute().close() } catch (_: Exception) { }
     }

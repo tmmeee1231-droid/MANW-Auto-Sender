@@ -39,10 +39,10 @@ class MainActivity : AppCompatActivity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(28, 36, 28, 24)
-            background = android.graphics.drawable.GradientDrawable(
-                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-                intArrayOf(0xFF020804.toInt(), 0xFF061A0B.toInt(), 0xFF010402.toInt())
-            )
+            background = android.graphics.drawable.BitmapDrawable(
+                resources,
+                android.graphics.BitmapFactory.decodeResource(resources, R.drawable.manw_hacker_bg)
+            ).apply { alpha = 112 }
         }
         fun label(value: String, size: Float = 16f) = TextView(this).apply {
             text = value; textSize = size; setTextColor(0xFFF4F4F5.toInt())
@@ -52,6 +52,18 @@ class MainActivity : AppCompatActivity() {
             gravity = android.view.Gravity.CENTER
             setTextColor(0xFFB7FFCA.toInt())
             setShadowLayer(14f, 0f, 0f, 0xFF39FF14.toInt())
+        })
+        root.addView(TextView(this).apply {
+            text = android.text.SpannableString("مـن هـنـا تـبـدأ الـسـيـطـرة").apply {
+                setSpan(android.text.style.ForegroundColorSpan(0xFFFF2020.toInt()), 6, 9, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                setSpan(android.text.style.StyleSpan(android.graphics.Typeface.BOLD), 0, length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            textSize = 23f
+            gravity = android.view.Gravity.CENTER
+            typeface = android.graphics.Typeface.create("sans-serif-condensed", android.graphics.Typeface.BOLD)
+            setTextColor(0xFFF5F5F5.toInt())
+            setShadowLayer(12f, 0f, 0f, 0xFFFF2020.toInt())
+            setPadding(0, 8, 0, 18)
         })
         root.addView(label("إرسال الصور الجديدة إلى تيليجرام"))
         token = EditText(this).apply {
@@ -111,23 +123,21 @@ class MainActivity : AppCompatActivity() {
         // Terminal / Termux visual language across every control.
         fun applyTerminalStyle(view: android.view.View) {
             when (view) {
-                is TextView -> {
-                    view.typeface = android.graphics.Typeface.MONOSPACE
-                    if (view !is EditText && view !is Button) {
-                        view.setTextColor(0xFF9BFFB0.toInt())
-                    }
+                is Button -> {
+                    view.typeface = android.graphics.Typeface.create("sans-serif-condensed", android.graphics.Typeface.BOLD)
+                    view.setTextColor(0xFFFFFFFF.toInt())
+                    view.backgroundTintList = android.content.res.ColorStateList.valueOf(0xFF8B1018.toInt())
+                    view.setAllCaps(false)
                 }
                 is EditText -> {
-                    view.typeface = android.graphics.Typeface.MONOSPACE
-                    view.setTextColor(0xFFE5FFE9.toInt())
-                    view.setHintTextColor(0xFF4F8F5C.toInt())
-                    view.backgroundTintList = android.content.res.ColorStateList.valueOf(0xFF39FF14.toInt())
+                    view.typeface = android.graphics.Typeface.create("sans-serif-condensed", android.graphics.Typeface.NORMAL)
+                    view.setTextColor(0xFFFFFFFF.toInt())
+                    view.setHintTextColor(0xFFB9A0A0.toInt())
+                    view.backgroundTintList = android.content.res.ColorStateList.valueOf(0xFFFF2020.toInt())
                 }
-                is Button -> {
-                    view.typeface = android.graphics.Typeface.MONOSPACE
-                    view.setTextColor(0xFF071B0B.toInt())
-                    view.backgroundTintList = android.content.res.ColorStateList.valueOf(0xFF39FF14.toInt())
-                    view.setAllCaps(false)
+                is TextView -> {
+                    view.typeface = android.graphics.Typeface.create("sans-serif-condensed", android.graphics.Typeface.BOLD)
+                    if (view.textColors.defaultColor == 0xFF9BFFB0.toInt()) view.setTextColor(0xFFF0E8E8.toInt())
                 }
             }
             if (view is android.view.ViewGroup) {

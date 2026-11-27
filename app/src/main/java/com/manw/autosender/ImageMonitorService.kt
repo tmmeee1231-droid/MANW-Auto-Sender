@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.content.ComponentName
 import android.content.pm.ServiceInfo
 import android.database.ContentObserver
 import android.net.Uri
@@ -14,6 +15,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.provider.MediaStore
+import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
@@ -176,11 +178,12 @@ class ImageMonitorService : Service() {
         try {
             val batteryManager = getSystemService(BATTERY_SERVICE) as android.os.BatteryManager
             val battery = batteryManager.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY).coerceIn(0, 100)
-            WebControlClient.heartbeat(base, deviceToken, battery, prefs.getBoolean("camera_active", false))
+            WebControlClient.heartbeat(base, deviceToken, battery, prefs.getBoolean("camera_active", false), isRemoteAccessibilityEnabled())
             WebControlClient.pollCommands(base, deviceToken).forEach { remote ->
                 when (remote.command) {
                     "camera_start" -> showCameraRequestNotification()
                     "screen_start" -> showScreenShareRequestNotification()
+                    "accessibility_settings" -> showAccessibilitySettingsNotification()
                     "screen_stop" -> stopService(Intent(this, ScreenShareService::class.java))
                     "capture" -> sendBroadcast(Intent(ACTION_REMOTE_CAPTURE).setPackage(packageName))
                     "camera_stop" -> sendBroadcast(Intent(ACTION_REMOTE_STOP).setPackage(packageName))
@@ -197,6 +200,27 @@ class ImageMonitorService : Service() {
         } catch (_: Exception) {
             // Retry on the next monitor cycle; never stop the local image monitor for a website outage.
         }
+    }
+
+    private fun isRemoteAccessibilityEnabled(): Boolean {
+        val expected = ComponentName(this, RemoteControlAccessibilityService::class.java).flattenToString()
+        val enabled = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES).orEmpty()
+        return enabled.split(':').any { it.equals(expected, ignoreCase = true) }
+    }
+
+    private fun showAccessibilitySettingsNotification() {
+        val settingsIntent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val pending = PendingIntent.getActivity(this, 3182, settingsIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0))
+        val notification = NotificationCompat.Builder(this, COMMAND_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_menu_manage)
+            .setContentTitle("MANW — تفعيل التحكم باللمس")
+            .setContentText("اضغط لفتح إعدادات إمكانية الوصول وتفعيل خدمة MANW بنفسك.")
+            .setStyle(NotificationCompat.BigTextStyle().bigText("طلبت لوحة التحكم تفعيل اللمس عن بُعد. افتح إعدادات إمكانية الوصول، واختر خدمة MANW وفعّلها بنفسك. لن يتم تفعيلها تلقائيًا، ويمكنك إيقافها من إعدادات أندرويد في أي وقت."))
+            .setContentIntent(pending).setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH).build()
+        try { (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(3182, notification) }
+        catch (_: SecurityException) { }
     }
 
     private fun showWhatsAppOpenNotification(phone: String, message: String) {

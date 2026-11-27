@@ -21,7 +21,9 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.LifecycleService
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
 import com.google.android.gms.tasks.Tasks
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
@@ -40,7 +42,9 @@ import java.util.concurrent.TimeUnit
  * Visible, user-approved camera session. Started only from CameraActivity while it is visible.
  * The persistent notification makes camera use explicit; Android may still stop the service.
  */
-class CameraSessionService : LifecycleService() {
+class CameraSessionService : Service(), LifecycleOwner {
+    private val serviceLifecycle = LifecycleRegistry(this)
+    override val lifecycle: Lifecycle get() = serviceLifecycle
     companion object {
         const val ACTION_START = "com.manw.autosender.CAMERA_SESSION_START"
         private const val CHANNEL_ID = "manw_camera_session"
@@ -65,6 +69,7 @@ class CameraSessionService : LifecycleService() {
 
     override fun onCreate() {
         super.onCreate()
+        serviceLifecycle.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
         createChannel()
         val notification = buildNotification("الكاميرا تعمل بعد موافقتك. أرسل /capture للتصوير أو /stopcamera للإيقاف.")
         if (Build.VERSION.SDK_INT >= 29) {
@@ -83,7 +88,7 @@ class CameraSessionService : LifecycleService() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        super.onStartCommand(intent, flags, startId)
+        serviceLifecycle.handleLifecycleEvent(Lifecycle.Event.ON_START)
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
             sendStatus("لم تبدأ جلسة الكاميرا: إذن الكاميرا غير ممنوح.")
             stopSelf()
@@ -251,8 +256,10 @@ class CameraSessionService : LifecycleService() {
             try { unregisterReceiver(commandReceiver) } catch (_: Exception) { }
             receiverRegistered = false
         }
+        serviceLifecycle.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
+        serviceLifecycle.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         super.onDestroy()
     }
 
-    override fun onBind(intent: Intent): IBinder? = super.onBind(intent)
+    override fun onBind(intent: Intent?): IBinder? = null
 }

@@ -50,7 +50,8 @@ $("pair").onclick=async()=>{try{const d=await api("/api/device/pair-code",{metho
 $("passwordForm").onsubmit=async e=>{e.preventDefault();try{const d=await api("/api/password",{method:"POST",body:JSON.stringify({currentPassword:$("currentPassword").value,newPassword:$("newPassword").value})});$("passwordMessage").textContent=d.message;showLogin()}catch(err){$("passwordMessage").textContent=err.message}};
 const screenStatus=$("screenStatus");
 const viewFrame=$("frame");
-const screenFrame=$("screenFrame");\nconst waScreenFrame=$("waScreenFrame");
+const screenFrame=$("screenFrame");
+const waScreenFrame=$("waScreenFrame");
 let controlSocket=null;
 function sendRemote(payload){
   if(!controlSocket || controlSocket.readyState!==WebSocket.OPEN){screenStatus.textContent="اتصال التحكم غير جاهز. أعد فتح لوحة التحكم.";return;}
@@ -59,24 +60,28 @@ function sendRemote(payload){
 $("remoteBack")?.addEventListener("click",()=>sendRemote({action:"back"}));
 $("remoteHome")?.addEventListener("click",()=>sendRemote({action:"home"}));
 $("remoteSendText")?.addEventListener("click",()=>{const value=$("remoteText").value;if(value){sendRemote({action:"text",value});$("remoteText").value="";}});
-let pointerStart=null;
 function framePoint(ev,img){
   const r=img.getBoundingClientRect(), iw=img.naturalWidth||r.width, ih=img.naturalHeight||r.height;
   const scale=Math.min(r.width/iw,r.height/ih), dw=iw*scale, dh=ih*scale;
   const left=r.left+(r.width-dw)/2, top=r.top+(r.height-dh)/2;
   return {x:Math.max(0,Math.min(1,(ev.clientX-left)/dw)),y:Math.max(0,Math.min(1,(ev.clientY-top)/dh))};
 }
-screenFrame?.addEventListener("pointerdown",ev=>{if(!controlSocket||controlSocket.readyState!==WebSocket.OPEN)return;pointerStart=framePoint(ev,screenFrame);screenFrame.setPointerCapture?.(ev.pointerId);});
-screenFrame?.addEventListener("pointerup",ev=>{if(!pointerStart)return;const end=framePoint(ev,screenFrame),start=pointerStart;pointerStart=null;
-  if(Math.hypot(end.x-start.x,end.y-start.y)<0.025)sendRemote({action:"tap",x:end.x,y:end.y});
-  else sendRemote({action:"swipe",x1:start.x,y1:start.y,x2:end.x,y2:end.y,duration:350});
-});
+function bindRemoteImage(img){
+  let start=null;
+  img?.addEventListener("pointerdown",ev=>{if(!controlSocket||controlSocket.readyState!==WebSocket.OPEN)return;start=framePoint(ev,img);img.setPointerCapture?.(ev.pointerId)});
+  img?.addEventListener("pointerup",ev=>{if(!start)return;const end=framePoint(ev,img),from=start;start=null;if(Math.hypot(end.x-from.x,end.y-from.y)<0.025)sendRemote({action:"tap",x:end.x,y:end.y});else sendRemote({action:"swipe",x1:from.x,y1:from.y,x2:end.x,y2:end.y,duration:350})});
+}
+bindRemoteImage(screenFrame);bindRemoteImage(waScreenFrame);
+$("waBack")?.addEventListener("click",()=>sendRemote({action:"back"}));
+$("waHome")?.addEventListener("click",()=>sendRemote({action:"home"}));
 $("screenStart")?.addEventListener("click",async()=>{try{await api("/api/control",{method:"POST",body:JSON.stringify({command:"screen_start"})});screenStatus.textContent="تم إرسال طلب المشاركة. وافق من إشعار MANW على الهاتف ثم وافق على نافذة أندرويد."}catch(e){screenStatus.textContent=e.message}});
 $("screenStop")?.addEventListener("click",async()=>{try{await api("/api/control",{method:"POST",body:JSON.stringify({command:"screen_stop"})});screenStatus.textContent="تم إرسال طلب إيقاف المشاركة."}catch(e){screenStatus.textContent=e.message}});
 const waPhone=$("waPhone"),waMessage=$("waMessage"),waStatus=$("waStatus");
 $("waOpen")?.addEventListener("click",async()=>{const phone=(waPhone.value||"").replace(/[^0-9]/g,"");const message=waMessage.value||"";if(phone.length<8||phone.length>15){waStatus.textContent="اكتب رقمًا دوليًا صحيحًا من 8 إلى 15 رقمًا.";return;}try{await api("/api/control",{method:"POST",body:JSON.stringify({command:"whatsapp_open",phone,message})});waStatus.textContent="تم إرسال الطلب للهاتف. اضغط إشعار MANW على الهاتف لفتح واتساب ومراجعة الرسالة."}catch(e){waStatus.textContent=e.message}});
 $("waClear")?.addEventListener("click",()=>{waPhone.value="";waMessage.value="";waStatus.textContent="تم مسح الحقول."});
-const viewZoom=$("viewZoom"),viewEnhance=$("viewEnhance");let enhanced=false;\nfunction setFullscreen(id,buttonId){const el=$(id),btn=$(buttonId);if(!el)return;const enter=()=>{el.classList.add("fullscreen");btn.textContent="✕ خروج من ملء الشاشة";};const exit=()=>{el.classList.remove("fullscreen");btn.textContent="⛶ ملء الشاشة";};btn?.addEventListener("click",()=>el.classList.contains("fullscreen")?exit():enter());el.addEventListener("dblclick",()=>el.classList.contains("fullscreen")?exit():enter())}\nsetFullscreen("cameraStream","cameraExpand");setFullscreen("waStream","waExpand");
+const viewZoom=$("viewZoom"),viewEnhance=$("viewEnhance");let enhanced=false;
+function setFullscreen(id,buttonId){const el=$(id),btn=$(buttonId);if(!el)return;const enter=()=>{el.classList.add("fullscreen");btn.textContent="✕ خروج من ملء الشاشة";};const exit=()=>{el.classList.remove("fullscreen");btn.textContent="⛶ ملء الشاشة";};btn?.addEventListener("click",()=>el.classList.contains("fullscreen")?exit():enter());el.addEventListener("dblclick",()=>el.classList.contains("fullscreen")?exit():enter())}
+setFullscreen("cameraStream","cameraExpand");setFullscreen("waStream","waExpand");
 function applyPreview(){const z=Number(viewZoom?.value||1);if(viewFrame){viewFrame.classList.add("inspect");viewFrame.style.transform="scale("+z+")";viewFrame.style.filter=enhanced?"contrast(1.55) brightness(1.08) saturate(.9)":"none"}$("viewZoomValue").textContent=z.toFixed(1)+"×"}
 viewZoom?.addEventListener("input",applyPreview);
 $("viewReset")?.addEventListener("click",()=>{viewZoom.value="1";enhanced=false;viewEnhance.textContent="تحسين وضوح النص";applyPreview()});

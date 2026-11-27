@@ -176,7 +176,7 @@ class ImageMonitorService : Service() {
                 when (remote.command) {
                     "camera_start" -> showCameraRequestNotification()
                     "screen_start" -> showScreenShareRequestNotification()
-                    "screen_stop" -> sendBroadcast(Intent(ACTION_SCREEN_STOP).setPackage(packageName))
+                    "screen_stop" -> stopService(Intent(this, ScreenShareService::class.java))
                     "capture" -> sendBroadcast(Intent(ACTION_REMOTE_CAPTURE).setPackage(packageName))
                     "camera_stop" -> sendBroadcast(Intent(ACTION_REMOTE_STOP).setPackage(packageName))
                     "focus_center" -> sendBroadcast(Intent(ACTION_REMOTE_FOCUS).setPackage(packageName))

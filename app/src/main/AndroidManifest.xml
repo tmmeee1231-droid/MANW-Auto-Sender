@@ -8,6 +8,10 @@
     <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <application android:allowBackup="false" android:label="𝑀𝒜𝒩𝒲 Auto Sender" android:theme="@style/AppTheme">
+        <activity android:name=".CameraActivity" android:exported="false" android:screenOrientation="portrait" />
+        <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.fileprovider" android:exported="false" android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
+        </provider>
         <service android:name=".ImageMonitorService" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="dataSync|specialUse">
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Monitor newly added gallery images and send them to the user-configured Telegram chat." />
         </service>

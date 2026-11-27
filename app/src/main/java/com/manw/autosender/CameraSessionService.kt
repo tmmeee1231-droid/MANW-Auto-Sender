@@ -14,6 +14,10 @@ import android.net.Uri
 import android.os.Build
 import android.os.IBinder
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.CameraControl
+import androidx.camera.core.FocusMeteringAction
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.SurfaceOrientedMeteringPointFactory
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageCapture.OutputFileOptions
@@ -37,6 +41,8 @@ import okhttp3.RequestBody.Companion.asRequestBody
 import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Visible, user-approved camera session. Started only from CameraActivity while it is visible.
@@ -52,6 +58,10 @@ class CameraSessionService : Service(), LifecycleOwner {
     }
 
     @Volatile private var imageCapture: ImageCapture? = null
+    @Volatile private var cameraControl: CameraControl? = null
+    private val analysisExecutor = Executors.newSingleThreadExecutor()
+    private val analyzing = AtomicBoolean(false)
+    @Volatile private var lastAutoFocusAt = 0L
     @Volatile private var sending = false
     private var receiverRegistered = false
 
@@ -104,10 +114,16 @@ class CameraSessionService : Service(), LifecycleOwner {
             try {
                 val provider = future.get()
                 val capture = ImageCapture.Builder()
-                    .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                    .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
+                    .setJpegQuality(100)
                     .build()
+                val analysis = ImageAnalysis.Builder()
+                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                    .build()
+                analysis.setAnalyzer(analysisExecutor) { proxy -> analyzeForTextAndFocus(proxy) }
                 provider.unbindAll()
-                provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, capture)
+                val camera = provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, capture, analysis)
+                cameraControl = camera.cameraControl
                 imageCapture = capture
                 updateNotification("جلسة الكاميرا نشطة بموافقتك. أرسل /capture لالتقاط صورة.")
                 sendStatus("تم تشغيل جلسة الكاميرا في الخلفية بموافقتك. أرسل /capture للتصوير أو /stopcamera للإيقاف.")
@@ -116,6 +132,59 @@ class CameraSessionService : Service(), LifecycleOwner {
                 stopSelf()
             }
         }, ContextCompat.getMainExecutor(this))
+    }
+
+
+    /**
+     * Detect text in camera frames and meter autofocus/exposure on its center,
+     * equivalent to automatically tapping the text on the camera preview.
+     */
+    private fun analyzeForTextAndFocus(proxy: ImageAnalysis.ImageProxy) {
+        val mediaImage = proxy.image
+        if (mediaImage == null || !analyzing.compareAndSet(false, true)) {
+            proxy.close()
+            return
+        }
+        if (System.currentTimeMillis() - lastAutoFocusAt < 2500L) {
+            analyzing.set(false)
+            proxy.close()
+            return
+        }
+        val input = try {
+            InputImage.fromMediaImage(mediaImage, proxy.imageInfo.rotationDegrees)
+        } catch (_: Exception) {
+            analyzing.set(false)
+            proxy.close()
+            return
+        }
+        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        recognizer.process(input)
+            .addOnSuccessListener { result ->
+                val rect = result.textBlocks
+                    .maxByOrNull { block ->
+                        val box = block.boundingBox
+                        if (box == null) 0L else box.width().toLong() * box.height().toLong()
+                    }?.boundingBox
+                if (rect != null && rect.width() > 0 && rect.height() > 0) {
+                    val rotation = proxy.imageInfo.rotationDegrees
+                    val w = if (rotation == 90 || rotation == 270) proxy.height.toFloat() else proxy.width.toFloat()
+                    val h = if (rotation == 90 || rotation == 270) proxy.width.toFloat() else proxy.height.toFloat()
+                    try {
+                        val point = SurfaceOrientedMeteringPointFactory(w, h)
+                            .createPoint(rect.exactCenterX().coerceIn(0f, w), rect.exactCenterY().coerceIn(0f, h))
+                        val action = FocusMeteringAction.Builder(
+                            point, FocusMeteringAction.FLAG_AF or FocusMeteringAction.FLAG_AE
+                        ).setAutoCancelDuration(3, TimeUnit.SECONDS).build()
+                        cameraControl?.startFocusAndMetering(action)
+                        lastAutoFocusAt = System.currentTimeMillis()
+                    } catch (_: Exception) { }
+                }
+            }
+            .addOnCompleteListener {
+                recognizer.close()
+                analyzing.set(false)
+                proxy.close()
+            }
     }
 
     private fun captureAndSend() {
@@ -252,6 +321,8 @@ class CameraSessionService : Service(), LifecycleOwner {
     override fun onDestroy() {
         try { ProcessCameraProvider.getInstance(this).get().unbindAll() } catch (_: Exception) { }
         imageCapture = null
+        cameraControl = null
+        analysisExecutor.shutdown()
         if (receiverRegistered) {
             try { unregisterReceiver(commandReceiver) } catch (_: Exception) { }
             receiverRegistered = false

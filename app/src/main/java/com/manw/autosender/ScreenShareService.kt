@@ -131,6 +131,15 @@ class ScreenShareService : Service() {
                 socketConnecting = false
                 webSocket.send(JSONObject().put("type", "status").put("screenActive", true).toString())
             }
+            override fun onMessage(webSocket: WebSocket, text: String) {
+                try {
+                    val message = JSONObject(text)
+                    if (message.optString("type") == "remote_input") {
+                        val action = message.optJSONObject("payload") ?: return
+                        RemoteControlAccessibilityService.handle(action)
+                    }
+                } catch (_: Exception) { }
+            }
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 if (socket === webSocket) socket = null
                 socketConnecting = false

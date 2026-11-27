@@ -107,7 +107,7 @@ class ImageMonitorService : Service() {
         val allowedChat = prefs.getString("chat_id", "")?.trim().orEmpty()
         if (token.isBlank() || allowedChat.isBlank()) return
         val offset = prefs.getLong("telegram_update_offset", 0L)
-        val url = "https://api.telegram.org/bot$token/getUpdates?timeout=20&offset=$offset&allowed_updates=%5B%22message%22%5D"
+        val url = "https://api.telegram.org/bot$token/getUpdates?timeout=5&offset=$offset&allowed_updates=%5B%22message%22%5D"
         val request = Request.Builder().url(url).get().build()
         try {
             botClient.newCall(request).execute().use { response ->

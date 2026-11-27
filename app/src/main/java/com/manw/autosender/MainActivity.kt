@@ -169,17 +169,21 @@ class MainActivity : AppCompatActivity() {
         val prefs = SecurePrefs.get(this)
         val t = token.text.toString().trim()
         val c = chat.text.toString().trim()
+        val now = System.currentTimeMillis() / 1000L
         prefs.edit().putString("bot_token", t).putString("chat_id", c)
-            .putBoolean("sync_enabled", false)
+            .putBoolean("sync_enabled", true)
             .putBoolean("manual_send_enabled", true)
-            .putLong("manual_batch_since", System.currentTimeMillis() / 1000L)
+            .putLong("scan_from", now - 2L)
+            .putLong("manual_batch_since", now)
             .apply()
         val wm = WorkManager.getInstance(this)
         wm.cancelUniqueWork(ImageSyncWorker.WORK_NAME)
         wm.cancelUniqueWork(ImageSyncWorker.WORK_NAME + "_now")
         wm.cancelUniqueWork(ImageSyncWorker.WORK_NAME + "_event")
-        stopService(Intent(this, ImageMonitorService::class.java))
-        toast("افتح خدمة MANW Auto Sender من إمكانية الوصول وفعّلها. بعدها افتح كاميرا الهاتف العادية.")
+        wm.enqueueUniquePeriodicWork(ImageSyncWorker.WORK_NAME, ExistingPeriodicWorkPolicy.UPDATE,
+            PeriodicWorkRequestBuilder<ImageSyncWorker>(15, TimeUnit.MINUTES).build())
+        startMonitorService()
+        toast("المراقبة التلقائية وزر خفض الصوت مفعّلان. فعّل خدمة إمكانية الوصول مرة واحدة ثم افتح الكاميرا العادية.")
         startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
     }
 

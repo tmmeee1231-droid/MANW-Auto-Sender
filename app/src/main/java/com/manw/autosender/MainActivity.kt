@@ -13,7 +13,6 @@ import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import androidx.work.Data
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
@@ -61,8 +60,6 @@ class MainActivity : AppCompatActivity() {
         root.addView(start)
         val stop = Button(this).apply { text = "إيقاف المزامنة" }
         root.addView(stop)
-        val sendLatest = Button(this).apply { text = "إرسال أحدث صورة الآن (اختبار فعلي)" }
-        root.addView(sendLatest)
         val test = Button(this).apply { text = "اختبار اتصال البوت فقط" }
         root.addView(test)
         val enableVolumeSend = Button(this).apply { text = "تفعيل الإرسال بزر خفض الصوت مع الكاميرا العادية" }

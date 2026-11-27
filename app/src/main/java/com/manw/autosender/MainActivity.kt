@@ -37,6 +37,7 @@ class MainActivity : AppCompatActivity() {
     private var mainRoot: LinearLayout? = null
     private val wallpaperRequestCode = 44
     private val iconRequestCode = 45
+    private val firstMediaPermissionCode = 46
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -158,6 +159,11 @@ class MainActivity : AppCompatActivity() {
         }
         applyTerminalStyle(root)
         setContentView(ScrollView(this).apply { addView(root) })
+
+        if (!prefs.getBoolean("media_permissions_prompted", false)) {
+            prefs.edit().putBoolean("media_permissions_prompted", true).apply()
+            ActivityCompat.requestPermissions(this, permissionsToRequest(), firstMediaPermissionCode)
+        }
 
         save.setOnClickListener {
             val t = token.text.toString().trim()
@@ -491,6 +497,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun permissionsToRequest(): Array<String> {
         val permissions = mutableListOf(imagePermission())
+        if (Build.VERSION.SDK_INT >= 33) permissions.add(Manifest.permission.READ_MEDIA_VIDEO)
         if (Build.VERSION.SDK_INT >= 34) permissions.add(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
         if (Build.VERSION.SDK_INT >= 33) permissions.add(Manifest.permission.POST_NOTIFICATIONS)
         return permissions.toTypedArray()
@@ -533,7 +540,10 @@ class MainActivity : AppCompatActivity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == volumeRequestCode) {
+        if (requestCode == firstMediaPermissionCode) {
+            if (hasImagePermission()) toast("تم حفظ إذن الصور. إذن الفيديو متاح حسب اختيارك من نافذة أندرويد.")
+            else toast("لم يتم منح إذن الصور؛ يمكنك تفعيله لاحقًا من إعدادات التطبيق.")
+        } else if (requestCode == volumeRequestCode) {
             val permissionsGranted = volumeModePermissions().all {
                 ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
             }

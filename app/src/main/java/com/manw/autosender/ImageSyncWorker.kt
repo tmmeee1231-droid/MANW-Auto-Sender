@@ -85,6 +85,9 @@ class ImageSyncWorker(context: Context, params: WorkerParameters) : CoroutineWor
         val sent = prefs.getStringSet("sent_ids", emptySet())?.toMutableSet() ?: mutableSetOf()
         var checked = 0
         var delivered = 0
+        var alreadySent = 0
+        var failed = 0
+        var firstFailure = ""
         try {
             val cursor = applicationContext.contentResolver.query(
                 collection, projection, selection, arrayOf(selectionArg),
@@ -95,14 +98,16 @@ class ImageSyncWorker(context: Context, params: WorkerParameters) : CoroutineWor
                 while (it.moveToNext()) {
                     checked++
                     val id = it.getLong(idCol)
-                    if (manualId < 0L && id.toString() in sent) continue
+                    if (id.toString() in sent) {
+                        alreadySent++
+                        continue
+                    }
                     val uri = ContentUris.withAppendedId(collection, id)
                     val result = sendImage(uri, token, chatId)
                     if (!result.first) {
-                        val failure = "فشل إرسال الصورة: ${result.second}"
-                        prefs.edit().putString("last_error", result.second).putString("last_result", failure).apply()
-                        if (manualBatch) showStatus(applicationContext, "فشل إرسال الصورة", result.second)
-                        return@withContext Result.retry()
+                        failed++
+                        if (firstFailure.isBlank()) firstFailure = result.second
+                        continue
                     }
                     sent.add(id.toString())
                     delivered++
@@ -111,18 +116,24 @@ class ImageSyncWorker(context: Context, params: WorkerParameters) : CoroutineWor
                         .remove("last_error").apply()
                 }
             }
+            val confirmedTotal = alreadySent + delivered
             val message = when {
-                manualId >= 0L && delivered > 0 -> "تم إرسال الصورة الآن وتأكيد استلامها من تيليجرام."
-                manualId >= 0L -> "لم يتم العثور على الصورة المطلوبة في المعرض."
-                checked == 0 -> "الفحص اكتمل، لكن لم يعثر على صور جديدة ضمن صلاحيات التطبيق."
-                delivered == 0 -> "الفحص اكتمل؛ الصور التي عثر عليها سبق إرسالها."
-                else -> "تم إرسال $delivered صورة وتأكيد استلامها من تيليجرام."
+                checked == 0 -> "لم يتم العثور على صور ضمن فترة المراقبة أو صلاحيات التطبيق."
+                failed > 0 -> "حالة الإرسال: تم تأكيد وصول $confirmedTotal صورة إلى تيليجرام، وتم إرسال $delivered صورة الآن، وهناك $failed صورة معلّقة. ستتم إعادة محاولة إرسال الصور المعلّقة تلقائيًا. السبب: $firstFailure"
+                delivered > 0 -> "اكتمل الإرسال: تيليجرام أكد استلام $confirmedTotal صورة. تم إرسال $delivered صورة الآن، ولم تعد هناك صور معلّقة."
+                else -> "كل الصور الـ $alreadySent التي تم فحصها سبق إرسالها وتأكيد وصولها إلى تيليجرام. لا توجد صور معلّقة."
             }
-            val editor = prefs.edit().putString("last_result", message).remove("last_error")
-            if (manualBatch && delivered > 0) editor.putLong("manual_batch_since", System.currentTimeMillis() / 1000L)
+            val editor = prefs.edit().putString("last_result", message)
+            if (failed > 0) editor.putString("last_error", firstFailure)
+            else editor.remove("last_error")
+            if (manualBatch && failed == 0 && checked > 0) editor.putLong("manual_batch_since", System.currentTimeMillis() / 1000L)
             editor.apply()
-            if (manualBatch) showStatus(applicationContext, if (delivered > 0) "تم الإرسال بنجاح" else "لم يتم الإرسال", message)
-            Result.success()
+            if (manualBatch) showStatus(
+                applicationContext,
+                if (failed > 0) "صور معلّقة — ستعاد المحاولة" else "حالة الصور",
+                message
+            )
+            if (failed > 0) Result.retry() else Result.success()
         } catch (e: SecurityException) {
             val message = "إذن الصور غير متاح أو الوصول جزئي. اسمح بالوصول لكل الصور من إعدادات التطبيق."
             prefs.edit().putString("last_error", message).apply()

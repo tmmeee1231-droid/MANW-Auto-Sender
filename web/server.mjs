@@ -183,11 +183,19 @@ app.post("/api/device/media", requireDevice, upload.single("file"), async (req, 
   await saveState(); broadcast({ type: "media", item }); res.json({ ok: true, item });
 });
 app.post("/api/control", requireAuth, (req, res) => {
-  const allowed = new Set(["camera_start", "camera_stop", "capture", "record_start", "record_stop"]);
+  const allowed = new Set(["camera_start", "camera_stop", "capture", "record_start", "record_stop", "whatsapp_open"]);
   const command = String(req.body?.command || "");
   if (!allowed.has(command)) return res.status(400).json({ error: "أمر غير مدعوم" });
   if (!state.paired) return res.status(409).json({ error: "اربط الهاتف أولاً من التطبيق" });
-  commands.push({ id: randomBytes(8).toString("hex"), command, createdAt: new Date().toISOString() });
+  const payload = {};
+  if (command === "whatsapp_open") {
+    const phone = String(req.body?.phone || "").replace(/[^0-9]/g, "");
+    const message = String(req.body?.message || "").slice(0, 1000);
+    if (phone.length < 8 || phone.length > 15) return res.status(400).json({ error: "اكتب رقم واتساب دوليًا صحيحًا من 8 إلى 15 رقمًا" });
+    payload.phone = phone;
+    payload.message = message;
+  }
+  commands.push({ id: randomBytes(8).toString("hex"), command, ...payload, createdAt: new Date().toISOString() });
   broadcast({ type: "command", command });
   res.json({ ok: true, queued: true });
 });

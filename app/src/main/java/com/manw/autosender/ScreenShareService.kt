@@ -141,7 +141,14 @@ class ScreenShareService : Service() {
                     val message = JSONObject(text)
                     if (message.optString("type") == "remote_input") {
                         val action = message.optJSONObject("payload") ?: return
-                        RemoteControlAccessibilityService.handle(action)
+                        val name = action.optString("action")
+                        val accepted = RemoteControlAccessibilityService.handle(action)
+                        webSocket.send(JSONObject()
+                            .put("type", "remote_input_result")
+                            .put("accepted", accepted)
+                            .put("action", name)
+                            .put("reason", if (accepted) "" else "خدمة إمكانية الوصول غير مفعّلة أو تعذّر تنفيذ الأمر")
+                            .toString())
                     }
                 } catch (_: Exception) { }
             }

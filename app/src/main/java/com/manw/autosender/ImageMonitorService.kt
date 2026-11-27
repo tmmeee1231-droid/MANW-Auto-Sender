@@ -131,6 +131,25 @@ class ImageMonitorService : Service() {
                     if (chatId != allowedChat) continue
                     val command = message.optString("text").trim().substringBefore(" ").substringBefore("@")
                     when (command) {
+                        "/start" -> {
+                            sendBotMessage(token, allowedChat, "أهلاً بك في MANW. استخدم /help لعرض الأوامر المتاحة.")
+                        }
+                        "/help" -> {
+                            sendBotMessage(token, allowedChat, "أوامر MANW المتاحة:\n/start — بدء البوت\n/help — المساعدة\n/status — حالة المزامنة وآخر نتيجة\n/battery — مستوى البطارية\n/device — معلومات الجهاز\n\nأوامر الكاميرا الحالية كما هي دون تغيير.")
+                        }
+                        "/battery" -> {
+                            val batteryManager = getSystemService(BATTERY_SERVICE) as android.os.BatteryManager
+                            val level = batteryManager.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)
+                            val charging = if (batteryManager.isCharging) "قيد الشحن" else "غير موصل بالشاحن"
+                            val safeLevel = if (level in 0..100) "$level%" else "غير متاح"
+                            sendBotMessage(token, allowedChat, "البطارية: $safeLevel\nالحالة: $charging")
+                        }
+                        "/device" -> {
+                            val model = "${Build.MANUFACTURER} ${Build.MODEL}".trim()
+                            val androidVersion = Build.VERSION.RELEASE ?: "غير معروف"
+                            val appVersion = try { packageManager.getPackageInfo(packageName, 0).versionName } catch (_: Exception) { "غير معروف" }
+                            sendBotMessage(token, allowedChat, "الجهاز: $model\nAndroid: $androidVersion\nإصدار MANW: ${appVersion ?: "غير معروف"}")
+                        }
                         "/camera" -> {
                             showCameraRequestNotification()
                             sendBotMessage(token, allowedChat, "وصل طلب الكاميرا الخلفية. افتح إشعار MANW واضغط «موافقة وبدء الكاميرا». بعد الموافقة أرسل /capture لالتقاط صورة أو /stopcamera للإيقاف.")

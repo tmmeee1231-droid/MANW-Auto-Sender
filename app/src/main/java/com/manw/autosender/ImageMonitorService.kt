@@ -28,6 +28,8 @@ class ImageMonitorService : Service() {
     companion object {
         const val ACTION_REMOTE_CAPTURE = "com.manw.autosender.REMOTE_CAPTURE"
         const val ACTION_REMOTE_STOP = "com.manw.autosender.REMOTE_STOP"
+        const val ACTION_REMOTE_ZOOM = "com.manw.autosender.REMOTE_ZOOM"
+        const val ACTION_REMOTE_FOCUS = "com.manw.autosender.REMOTE_FOCUS"
         private const val CHANNEL_ID = "manw_image_monitor"
         private const val COMMAND_CHANNEL_ID = "manw_bot_commands"
         private const val NOTIFICATION_ID = 3107
@@ -174,6 +176,11 @@ class ImageMonitorService : Service() {
                     "camera_start" -> showCameraRequestNotification()
                     "capture" -> sendBroadcast(Intent(ACTION_REMOTE_CAPTURE).setPackage(packageName))
                     "camera_stop" -> sendBroadcast(Intent(ACTION_REMOTE_STOP).setPackage(packageName))
+                    "focus_center" -> sendBroadcast(Intent(ACTION_REMOTE_FOCUS).setPackage(packageName))
+                    else -> if (command.startsWith("zoom:")) {
+                        val zoom = command.substringAfter(":").toFloatOrNull()?.coerceIn(0f, 1f)
+                        if (zoom != null) sendBroadcast(Intent(ACTION_REMOTE_ZOOM).setPackage(packageName).putExtra("zoom", zoom))
+                    }
                     // Recording is not exposed until a visible, consent-based recorder is implemented.
                     "record_start", "record_stop" -> Unit
                 }

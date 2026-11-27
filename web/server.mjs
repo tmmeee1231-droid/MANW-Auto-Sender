@@ -213,7 +213,27 @@ server.on("upgrade", (req, socket, head) => {
   const cookies = parseCookies(req.headers.cookie);
   const session = sessions.get(cookies.manw_session);
   if (url.pathname === "/ws/view" && session && session.expires > Date.now()) {
-    wss.handleUpgrade(req, socket, head, ws => { viewers.add(ws); ws.on("close", () => viewers.delete(ws)); });
+    wss.handleUpgrade(req, socket, head, ws => {
+      viewers.add(ws);
+      ws.on("message", raw => {
+        try {
+          const msg = JSON.parse(raw.toString());
+          if (msg.type !== "remote_input") return;
+          const p = msg.payload || {};
+          const action = String(p.action || "");
+          if (!["tap", "swipe", "text", "back", "home"].includes(action)) return;
+          if (action === "text" && (typeof p.value !== "string" || p.value.length > 1000)) return;
+          const clean = { action };
+          for (const key of ["x","y","x1","y1","x2","y2","duration"]) {
+            if (Number.isFinite(p[key])) clean[key] = Math.max(0, Math.min(key === "duration" ? 1200 : 1, p[key]));
+          }
+          if (action === "text") clean.value = p.value;
+          const payload = JSON.stringify({ type: "remote_input", payload: clean });
+          for (const device of deviceSockets) if (device.readyState === 1) device.send(payload);
+        } catch {}
+      });
+      ws.on("close", () => viewers.delete(ws));
+    });
     return;
   }
   if (url.pathname === "/ws/device") {

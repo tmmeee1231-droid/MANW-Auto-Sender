@@ -30,6 +30,10 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (!AppPassword.isSessionValid(this)) {
+            showPasswordGate()
+            return
+        }
         val prefs = SecurePrefs.get(this)
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -85,6 +89,8 @@ class MainActivity : AppCompatActivity() {
         root.addView(disableVolumeSend)
         val notificationSettings = Button(this).apply { text = "اختيار التطبيقات لإرسال إشعاراتها إلى البوت" }
         root.addView(notificationSettings)
+        val changePassword = Button(this).apply { text = "تغيير كلمة سر التطبيق" }
+        root.addView(changePassword)
         root.addView(label("بعد التفعيل اسمح لخدمة إمكانية الوصول الخاصة بالتطبيق. افتح كاميرا الهاتف العادية وصوّر؛ الضغط المطوّل على زر خفض الصوت يرسل الصور الجديدة منذ التفعيل إلى تيليجرام. أثناء تفعيل الوضع سيُستخدم زر خفض الصوت للإرسال بدل خفض مستوى الصوت."))
         root.addView(label("بعد تشغيل المزامنة، يراقب التطبيق الصور الجديدة تلقائيًا بخدمة خلفية وإشعار دائم، ويرسلها عند اكتشافها دون الضغط على زر. يوجد فحص احتياطي كل 15 دقيقة. اسمح بالوصول إلى كل الصور؛ الوصول المحدود للصور المختارة لن يتيح مراقبة بقية المعرض. قد يوقف أندرويد الخدمة عند فرض إيقاف التطبيق أو تقييد البطارية."))
         setContentView(ScrollView(this).apply { addView(root) })
@@ -134,6 +140,7 @@ class MainActivity : AppCompatActivity() {
         notificationSettings.setOnClickListener {
             startActivity(Intent(this, NotificationSettingsActivity::class.java))
         }
+        changePassword.setOnClickListener { showChangePasswordDialog() }
         test.setOnClickListener {
             val t = token.text.toString().trim()
             val c = chat.text.toString().trim()
@@ -179,6 +186,131 @@ class MainActivity : AppCompatActivity() {
         val last = prefs.getString("last_result", null)
         if (!error.isNullOrBlank()) root.addView(label("آخر خطأ: " + error))
         if (!last.isNullOrBlank()) root.addView(label("آخر نتيجة: " + last))
+    }
+
+
+    private fun showPasswordGate() {
+        val prefs = SecurePrefs.get(this)
+        val firstSetup = !AppPassword.isConfigured(this)
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = android.view.Gravity.CENTER
+            setPadding(32, 36, 32, 36)
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+                intArrayOf(0xFF050509.toInt(), 0xFF26080D.toInt(), 0xFF08080D.toInt())
+            ).apply { cornerRadius = 0f }
+        }
+        val emblem = TextView(this).apply {
+            text = "☠"
+            textSize = 76f
+            gravity = android.view.Gravity.CENTER
+            setTextColor(0xFFB91C1C.toInt())
+            setShadowLayer(22f, 0f, 0f, 0xFFFF0000.toInt())
+        }
+        val title = TextView(this).apply {
+            text = "𝓜𝓐𝓝𝓦𓄿𝓐𝓗𝓜𝓔𝓓"
+            textSize = 27f
+            gravity = android.view.Gravity.CENTER
+            setTextColor(0xFFF8FAFC.toInt())
+            setShadowLayer(12f, 0f, 0f, 0xFF991B1B.toInt())
+        }
+        val subtitle = TextView(this).apply {
+            text = if (firstSetup) "أنشئ كلمة سر لحماية التطبيق" else "منطقة محمية • أدخل كلمة السر"
+            textSize = 16f
+            gravity = android.view.Gravity.CENTER
+            setTextColor(0xFFFCA5A5.toInt())
+            setPadding(0, 16, 0, 22)
+        }
+        val password = EditText(this).apply {
+            hint = if (firstSetup) "كلمة سر جديدة (6 أحرف على الأقل)" else "كلمة السر"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+            setSingleLine(true)
+            setTextColor(-1); setHintTextColor(0xFFBCAAAA.toInt())
+            backgroundTintList = android.content.res.ColorStateList.valueOf(0xFF991B1B.toInt())
+        }
+        val confirm = EditText(this).apply {
+            hint = "أكد كلمة السر"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+            setSingleLine(true)
+            setTextColor(-1); setHintTextColor(0xFFBCAAAA.toInt())
+            backgroundTintList = android.content.res.ColorStateList.valueOf(0xFF991B1B.toInt())
+            visibility = if (firstSetup) android.view.View.VISIBLE else android.view.View.GONE
+        }
+        val error = TextView(this).apply {
+            text = ""
+            gravity = android.view.Gravity.CENTER
+            setTextColor(0xFFFCA5A5.toInt())
+            setPadding(0, 12, 0, 8)
+        }
+        val enter = Button(this).apply {
+            text = if (firstSetup) "إنشاء كلمة السر والدخول" else "فتح التطبيق"
+            setTextColor(-1)
+            backgroundTintList = android.content.res.ColorStateList.valueOf(0xFF991B1B.toInt())
+        }
+        root.addView(emblem)
+        root.addView(title)
+        root.addView(subtitle)
+        root.addView(password)
+        root.addView(confirm)
+        root.addView(error)
+        root.addView(enter)
+        setContentView(root)
+        enter.setOnClickListener {
+            val pass = password.text.toString()
+            if (firstSetup) {
+                if (pass.length < 6) { error.text = "كلمة السر لازم تكون 6 أحرف على الأقل"; return@setOnClickListener }
+                if (pass != confirm.text.toString()) { error.text = "كلمتا السر غير متطابقتين"; return@setOnClickListener }
+                AppPassword.create(this, pass)
+                AppPassword.markUnlocked(this)
+                recreate()
+            } else {
+                if (AppPassword.verify(this, pass)) {
+                    AppPassword.markUnlocked(this)
+                    recreate()
+                } else {
+                    error.text = "كلمة السر غير صحيحة"
+                    password.text.clear()
+                }
+            }
+        }
+    }
+
+    private fun showChangePasswordDialog() {
+        val current = EditText(this).apply {
+            hint = "كلمة السر الحالية"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+        val next = EditText(this).apply {
+            hint = "كلمة السر الجديدة (6 أحرف على الأقل)"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+        val confirm = EditText(this).apply {
+            hint = "تأكيد كلمة السر الجديدة"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(24, 8, 24, 0)
+            addView(current); addView(next); addView(confirm)
+        }
+        android.app.AlertDialog.Builder(this)
+            .setTitle("تغيير كلمة سر MANW")
+            .setView(box)
+            .setNegativeButton("إلغاء", null)
+            .setPositiveButton("حفظ") { _, _ ->
+                val old = current.text.toString()
+                val fresh = next.text.toString()
+                if (!AppPassword.verify(this, old)) {
+                    toast("كلمة السر الحالية غير صحيحة")
+                } else if (fresh.length < 6 || fresh != confirm.text.toString()) {
+                    toast("تأكد من كلمة السر الجديدة (6 أحرف على الأقل)")
+                } else {
+                    AppPassword.create(this, fresh)
+                    AppPassword.markUnlocked(this)
+                    toast("تم تغيير كلمة السر")
+                }
+            }.show()
     }
 
     @Deprecated("Use Activity Result APIs")

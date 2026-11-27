@@ -5,6 +5,11 @@ import android.content.Context
 import android.provider.MediaStore
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
+import android.os.Build
+import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -22,6 +27,26 @@ class ImageSyncWorker(context: Context, params: WorkerParameters) : CoroutineWor
         const val WORK_NAME = "manw_new_image_sync"
         const val KEY_IMAGE_ID = "manual_image_id"
         const val KEY_MANUAL_BATCH = "manual_photo_batch"
+        private const val STATUS_CHANNEL = "manw_send_status"
+        private const val STATUS_NOTIFICATION_ID = 3108
+
+        fun showStatus(context: Context, title: String, message: String) {
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                manager.createNotificationChannel(
+                    NotificationChannel(STATUS_CHANNEL, "نتائج إرسال الصور", NotificationManager.IMPORTANCE_DEFAULT)
+                )
+            }
+            val notification = NotificationCompat.Builder(context, STATUS_CHANNEL)
+                .setSmallIcon(android.R.drawable.stat_sys_upload_done)
+                .setContentTitle(title)
+                .setContentText(message)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+                .setAutoCancel(true)
+                .build()
+            try { manager.notify(STATUS_NOTIFICATION_ID, notification) } catch (_: SecurityException) { }
+        }
+
         private val client = OkHttpClient.Builder().callTimeout(90, TimeUnit.SECONDS).build()
 
         fun testBot(token: String, chatId: String): String = try {
@@ -40,13 +65,13 @@ class ImageSyncWorker(context: Context, params: WorkerParameters) : CoroutineWor
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val prefs = SecurePrefs.get(applicationContext)
         val manualBatch = inputData.getBoolean(KEY_MANUAL_BATCH, false)
+        val manualId = inputData.getLong(KEY_IMAGE_ID, -1L)
         if (!prefs.getBoolean("sync_enabled", false) && !manualBatch) return@withContext Result.success()
         if (manualBatch && !prefs.getBoolean("manual_send_enabled", false)) return@withContext Result.success()
         val token = prefs.getString("bot_token", "") ?: ""
         val chatId = prefs.getString("chat_id", "") ?: ""
         if (token.isBlank() || chatId.isBlank()) return@withContext Result.failure()
 
-        val manualId = inputData.getLong(KEY_IMAGE_ID, -1L)
         val since = if (manualBatch) prefs.getLong("manual_batch_since", System.currentTimeMillis() / 1000L).coerceAtLeast(0L) else (prefs.getLong("scan_from", System.currentTimeMillis() / 1000L) - 120L).coerceAtLeast(0L)
         val collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
         val projection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_ADDED)
@@ -69,7 +94,9 @@ class ImageSyncWorker(context: Context, params: WorkerParameters) : CoroutineWor
                     val uri = ContentUris.withAppendedId(collection, id)
                     val result = sendImage(uri, token, chatId)
                     if (!result.first) {
-                        prefs.edit().putString("last_error", result.second).putString("last_result", "فشل إرسال الصورة رقم $id").apply()
+                        val failure = "فشل إرسال الصورة: ${result.second}"
+                        prefs.edit().putString("last_error", result.second).putString("last_result", failure).apply()
+                        showStatus(applicationContext, "فشل إرسال الصورة", result.second)
                         return@withContext Result.retry()
                     }
                     sent.add(id.toString())
@@ -89,12 +116,17 @@ class ImageSyncWorker(context: Context, params: WorkerParameters) : CoroutineWor
             val editor = prefs.edit().putString("last_result", message).remove("last_error")
             if (manualBatch && delivered > 0) editor.putLong("manual_batch_since", System.currentTimeMillis() / 1000L)
             editor.apply()
+            showStatus(applicationContext, if (delivered > 0) "تم الإرسال بنجاح" else "لم يتم الإرسال", message)
             Result.success()
         } catch (e: SecurityException) {
-            prefs.edit().putString("last_error", "إذن الصور غير متاح أو الوصول جزئي. اسمح بالوصول لكل الصور من إعدادات التطبيق.").apply()
+            val message = "إذن الصور غير متاح أو الوصول جزئي. اسمح بالوصول لكل الصور من إعدادات التطبيق."
+            prefs.edit().putString("last_error", message).apply()
+            showStatus(applicationContext, "فشل الإرسال", message)
             Result.failure()
         } catch (e: Exception) {
-            prefs.edit().putString("last_error", "خطأ أثناء الفحص/الإرسال: " + (e.message ?: "غير معروف")).apply()
+            val message = "خطأ أثناء الفحص/الإرسال: " + (e.message ?: "غير معروف")
+            prefs.edit().putString("last_error", message).apply()
+            showStatus(applicationContext, "فشل الإرسال", message)
             Result.retry()
         }
     }

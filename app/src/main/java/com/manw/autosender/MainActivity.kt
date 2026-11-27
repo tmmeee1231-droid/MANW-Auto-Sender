@@ -62,6 +62,23 @@ class MainActivity : AppCompatActivity() {
         root.addView(stop)
         val test = Button(this).apply { text = "اختبار اتصال البوت فقط" }
         root.addView(test)
+        root.addView(label("ربط الهاتف بموقع MANW للتحكم عن بُعد", 18f))
+        val webUrl = EditText(this).apply {
+            hint = "رابط الموقع https://..."
+            setSingleLine(true); setTextColor(-1); setHintTextColor(0xFF9CA3AF.toInt())
+            setText(prefs.getString("web_base_url", "https://manw-control-center-production.up.railway.app"))
+        }
+        root.addView(webUrl)
+        val webCode = EditText(this).apply {
+            hint = "رمز الاقتران الذي يظهر في الموقع"; setSingleLine(true); setTextColor(-1); setHintTextColor(0xFF9CA3AF.toInt())
+        }
+        root.addView(webCode)
+        val pairWeb = Button(this).apply { text = "ربط الهاتف بالموقع" }
+        root.addView(pairWeb)
+        val webStatus = label(if (prefs.getBoolean("web_paired", false)) "الموقع: الهاتف مقترن" else "الموقع: غير مربوط")
+        root.addView(webStatus)
+        val unpairWeb = Button(this).apply { text = "فصل الهاتف عن الموقع" }
+        root.addView(unpairWeb)
         val enableVolumeSend = Button(this).apply { text = "تفعيل الإرسال بزر خفض الصوت مع الكاميرا العادية" }
         root.addView(enableVolumeSend)
         val disableVolumeSend = Button(this).apply { text = "إيقاف الإرسال بزر خفض الصوت" }
@@ -126,7 +143,35 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread { toast(result) }
             }.start()
         }
-        if (prefs.getBoolean("sync_enabled", false)) {
+        pairWeb.setOnClickListener {
+            val base = webUrl.text.toString().trim()
+            val code = webCode.text.toString().trim()
+            if (base.isBlank() || code.isBlank()) { toast("اكتب رابط الموقع ورمز الاقتران أولاً"); return@setOnClickListener }
+            pairWeb.isEnabled = false
+            Thread {
+                try {
+                    val normalized = WebControlClient.normalizeBase(base)
+                    val deviceToken = WebControlClient.pair(normalized, code)
+                    prefs.edit().putString("web_base_url", normalized).putString("web_device_token", deviceToken)
+                        .putBoolean("web_paired", true).apply()
+                    runOnUiThread {
+                        pairWeb.isEnabled = true
+                        webStatus.text = "الموقع: الهاتف مقترن ومتصل بالخدمة"
+                        webCode.text.clear()
+                        toast("تم ربط الهاتف بالموقع. أوامر الكاميرا تتطلب موافقتك من الهاتف.")
+                        startMonitorService()
+                    }
+                } catch (e: Exception) {
+                    runOnUiThread { pairWeb.isEnabled = true; toast("فشل الربط: " + (e.message ?: "تحقق من الرمز والرابط")) }
+                }
+            }.start()
+        }
+        unpairWeb.setOnClickListener {
+            prefs.edit().remove("web_device_token").putBoolean("web_paired", false).apply()
+            webStatus.text = "الموقع: غير مربوط"
+            toast("تم فصل الهاتف عن الموقع")
+        }
+        if (prefs.getBoolean("sync_enabled", false) || prefs.getBoolean("web_paired", false)) {
             status.text = "الحالة: المزامنة مفعّلة"
             if (hasImagePermission()) startMonitorService()
         }

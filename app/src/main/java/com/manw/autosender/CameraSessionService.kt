@@ -213,7 +213,7 @@ class CameraSessionService : Service(), LifecycleOwner {
                         } catch (_: Exception) { false }
                         val originalResult = uploadPhoto(original, "الصورة الأصلية")
                         val enhancedResult = if (enhancedReady) uploadPhoto(enhanced, "نسخة محسّنة للوضوح والقراءة") else Pair(false, "تعذر إنشاء النسخة المحسّنة")
-                        val prefs = SecurePrefs.get(this)
+                        val prefs = SecurePrefs.get(this@CameraSessionService)
                         if (prefs.getBoolean("web_paired", false)) {
                             val base = prefs.getString("web_base_url", "").orEmpty()
                             val deviceToken = prefs.getString("web_device_token", "").orEmpty()

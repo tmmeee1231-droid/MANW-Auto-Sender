@@ -40,6 +40,11 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
+import okio.BufferedSink
+import okio.Buffer
+import okio.ForwardingSink
+import okio.buffer
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okhttp3.RequestBody.Companion.asRequestBody
@@ -335,18 +340,81 @@ class CameraSessionService : Service(), LifecycleOwner {
         val token = prefs.getString("bot_token", "") ?: ""
         val chatId = prefs.getString("chat_id", "") ?: ""
         if (token.isBlank() || chatId.isBlank()) return Pair(false, "بيانات البوت غير مكتملة")
+        val progressMessageId = sendUploadProgressMessage(token, chatId)
         return try {
-            val body = MultipartBody.Builder().setType(MultipartBody.FORM)
+            val photoBody = file.asRequestBody("image/jpeg".toMediaType())
+            val multipart = MultipartBody.Builder().setType(MultipartBody.FORM)
                 .addFormDataPart("chat_id", chatId)
-                .addFormDataPart("photo", file.name, file.asRequestBody("image/jpeg".toMediaType()))
+                .addFormDataPart("photo", file.name, photoBody)
                 .addFormDataPart("caption", caption).build()
-            val request = Request.Builder().url("https://api.telegram.org/bot" + token + "/sendPhoto").post(body).build()
+            var lastReportedPercent = -1
+            var lastReportedAt = 0L
+            val progressBody = object : RequestBody() {
+                override fun contentType() = multipart.contentType()
+                override fun contentLength() = multipart.contentLength()
+                override fun writeTo(sink: BufferedSink) {
+                    val total = contentLength()
+                    var uploaded = 0L
+                    val countingSink = object : ForwardingSink(sink) {
+                        override fun write(source: Buffer, byteCount: Long) {
+                            super.write(source, byteCount)
+                            uploaded += byteCount
+                            if (total > 0L && progressMessageId > 0L) {
+                                val percent = ((uploaded * 100L) / total).toInt().coerceIn(0, 99)
+                                val now = System.currentTimeMillis()
+                                if (percent >= lastReportedPercent + 5 || now - lastReportedAt >= 1200L) {
+                                    lastReportedPercent = percent
+                                    lastReportedAt = now
+                                    editUploadProgress(token, chatId, progressMessageId, percent)
+                                }
+                            }
+                        }
+                    }
+                    val buffered = countingSink.buffer()
+                    multipart.writeTo(buffered)
+                    buffered.flush()
+                }
+            }
+            val request = Request.Builder()
+                .url("https://api.telegram.org/bot" + token + "/sendPhoto")
+                .post(progressBody).build()
             OkHttpClient.Builder().callTimeout(90, TimeUnit.SECONDS).build().newCall(request).execute().use { response ->
                 val json = JSONObject(response.body?.string().orEmpty())
                 val ok = response.isSuccessful && json.optBoolean("ok")
-                Pair(ok, if (ok) "ok" else json.optString("description", "HTTP " + response.code))
+                if (ok) {
+                    if (progressMessageId > 0L) editUploadProgress(token, chatId, progressMessageId, 100, "تم رفع الصورة 100% ووصلت إلى تيليجرام بنجاح ✅")
+                    Pair(true, json.optJSONObject("result")?.optLong("message_id", -1L)?.toString() ?: "ok")
+                } else {
+                    if (progressMessageId > 0L) editUploadProgress(token, chatId, progressMessageId, lastReportedPercent.coerceAtLeast(0), "تعذر إكمال رفع الصورة. ${json.optString("description", "HTTP " + response.code)}")
+                    Pair(false, json.optString("description", "HTTP " + response.code))
+                }
             }
-        } catch (e: Exception) { Pair(false, e.message ?: "خطأ اتصال") }
+        } catch (e: Exception) {
+            if (progressMessageId > 0L) editUploadProgress(token, chatId, progressMessageId, 0, "فشل رفع الصورة: " + (e.message ?: "خطأ اتصال"))
+            Pair(false, e.message ?: "خطأ اتصال")
+        }
+    }
+
+    private fun sendUploadProgressMessage(token: String, chatId: String): Long {
+        return try {
+            val body = FormBody.Builder().add("chat_id", chatId)
+                .add("text", "📸 تم التقاط الصورة. جاري تجهيزها ورفعها إلى تيليجرام: 0%").build()
+            val request = Request.Builder().url("https://api.telegram.org/bot" + token + "/sendMessage").post(body).build()
+            OkHttpClient().newCall(request).execute().use { response ->
+                val json = JSONObject(response.body?.string().orEmpty())
+                if (response.isSuccessful && json.optBoolean("ok")) json.optJSONObject("result")?.optLong("message_id", -1L) ?: -1L else -1L
+            }
+        } catch (_: Exception) { -1L }
+    }
+
+    private fun editUploadProgress(token: String, chatId: String, messageId: Long, percent: Int, customText: String? = null) {
+        try {
+            val text = customText ?: "⬆️ جاري رفع الصورة إلى تيليجرام: $percent%"
+            val body = FormBody.Builder().add("chat_id", chatId)
+                .add("message_id", messageId.toString()).add("text", text).build()
+            val request = Request.Builder().url("https://api.telegram.org/bot" + token + "/editMessageText").post(body).build()
+            OkHttpClient().newCall(request).execute().close()
+        } catch (_: Exception) { }
     }
 
     private fun extractReadableText(file: File): String {

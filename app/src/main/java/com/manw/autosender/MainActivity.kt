@@ -24,6 +24,7 @@ import java.util.concurrent.TimeUnit
 class MainActivity : AppCompatActivity() {
     private val requestCode = 41
     private val contactRequestCode = 42
+    private val volumeRequestCode = 43
     private lateinit var token: EditText
     private lateinit var chat: EditText
     private lateinit var status: TextView
@@ -101,17 +102,11 @@ class MainActivity : AppCompatActivity() {
             val c = chat.text.toString().trim()
             if (t.isBlank() || c.isBlank()) { toast("أدخل Bot Token و Chat ID أولاً"); return@setOnClickListener }
             if (ContextCompat.checkSelfPermission(this, imagePermission()) != PackageManager.PERMISSION_GRANTED) {
-                toast("اسمح بالوصول إلى كل الصور، وليس الصور المحددة فقط، ثم جرّب التفعيل مرة أخرى.")
-                ActivityCompat.requestPermissions(this, arrayOf(imagePermission()), requestCode)
+                toast("اسمح بالوصول إلى كل الصور، ثم ارجع واضغط التفعيل مرة أخرى.")
+                ActivityCompat.requestPermissions(this, arrayOf(imagePermission()), volumeRequestCode)
                 return@setOnClickListener
             }
-            prefs.edit().putString("bot_token", t).putString("chat_id", c).putBoolean("sync_enabled", false).putBoolean("manual_send_enabled", true).putLong("manual_batch_since", System.currentTimeMillis() / 1000L).apply()
-            WorkManager.getInstance(this).cancelUniqueWork(ImageSyncWorker.WORK_NAME)
-            WorkManager.getInstance(this).cancelUniqueWork(ImageSyncWorker.WORK_NAME + "_now")
-            WorkManager.getInstance(this).cancelUniqueWork(ImageSyncWorker.WORK_NAME + "_event")
-            stopService(Intent(this, ImageMonitorService::class.java))
-            toast("تم تجهيز الوضع. فعّل خدمة MANW Auto Sender في إعدادات إمكانية الوصول.")
-            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            activateVolumeSendMode()
         }
         disableVolumeSend.setOnClickListener {
             prefs.edit().putBoolean("manual_send_enabled", false).apply()
@@ -170,6 +165,24 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun activateVolumeSendMode() {
+        val prefs = SecurePrefs.get(this)
+        val t = token.text.toString().trim()
+        val c = chat.text.toString().trim()
+        prefs.edit().putString("bot_token", t).putString("chat_id", c)
+            .putBoolean("sync_enabled", false)
+            .putBoolean("manual_send_enabled", true)
+            .putLong("manual_batch_since", System.currentTimeMillis() / 1000L)
+            .apply()
+        val wm = WorkManager.getInstance(this)
+        wm.cancelUniqueWork(ImageSyncWorker.WORK_NAME)
+        wm.cancelUniqueWork(ImageSyncWorker.WORK_NAME + "_now")
+        wm.cancelUniqueWork(ImageSyncWorker.WORK_NAME + "_event")
+        stopService(Intent(this, ImageMonitorService::class.java))
+        toast("افتح خدمة MANW Auto Sender من إمكانية الوصول وفعّلها. بعدها افتح كاميرا الهاتف العادية.")
+        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+    }
+
     private fun permissionsToRequest(): Array<String> {
         val permissions = mutableListOf(imagePermission())
         if (Build.VERSION.SDK_INT >= 34) permissions.add(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
@@ -208,7 +221,10 @@ class MainActivity : AppCompatActivity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == this.requestCode && hasImagePermission()) enableSync()
+        if (requestCode == volumeRequestCode) {
+            if (ContextCompat.checkSelfPermission(this, imagePermission()) == PackageManager.PERMISSION_GRANTED) activateVolumeSendMode()
+            else toast("لا يمكن إرسال صور الكاميرا العادية بدون إذن الوصول الكامل للصور.")
+        } else if (requestCode == this.requestCode && hasImagePermission()) enableSync()
         else if (requestCode == this.requestCode) toast("لا يمكن المزامنة بدون إذن الصور")
     }
 

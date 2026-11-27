@@ -41,7 +41,7 @@ class MainActivity : AppCompatActivity() {
             setPadding(28, 36, 28, 24)
             background = android.graphics.drawable.GradientDrawable(
                 android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-                intArrayOf(0xFF07070B.toInt(), 0xFF1B080D.toInt(), 0xFF090A10.toInt())
+                intArrayOf(0xFF020804.toInt(), 0xFF061A0B.toInt(), 0xFF010402.toInt())
             )
         }
         fun label(value: String, size: Float = 16f) = TextView(this).apply {
@@ -50,8 +50,8 @@ class MainActivity : AppCompatActivity() {
         }
         root.addView(label("☠ 𝓜𝓐𝓝𝓦𓄿𝓐𝓗𝓜𝓔𝓓  ☠", 25f).apply {
             gravity = android.view.Gravity.CENTER
-            setTextColor(0xFFFFDADA.toInt())
-            setShadowLayer(14f, 0f, 0f, 0xFFB91C1C.toInt())
+            setTextColor(0xFFB7FFCA.toInt())
+            setShadowLayer(14f, 0f, 0f, 0xFF39FF14.toInt())
         })
         root.addView(label("إرسال الصور الجديدة إلى تيليجرام"))
         token = EditText(this).apply {
@@ -223,7 +223,7 @@ class MainActivity : AppCompatActivity() {
             setPadding(32, 36, 32, 36)
             background = android.graphics.drawable.GradientDrawable(
                 android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-                intArrayOf(0xFF050509.toInt(), 0xFF26080D.toInt(), 0xFF08080D.toInt())
+                intArrayOf(0xFF010402.toInt(), 0xFF06210D.toInt(), 0xFF020804.toInt())
             ).apply { cornerRadius = 0f }
         }
         val emblem = TextView(this).apply {
@@ -238,20 +238,20 @@ class MainActivity : AppCompatActivity() {
             textSize = 27f
             gravity = android.view.Gravity.CENTER
             setTextColor(0xFFF8FAFC.toInt())
-            setShadowLayer(12f, 0f, 0f, 0xFF991B1B.toInt())
+            setShadowLayer(12f, 0f, 0f, 0xFF20C94A.toInt())
         }
         val subtitle = TextView(this).apply {
             text = if (firstSetup) "أنشئ كلمة سر لحماية التطبيق" else "منطقة محمية • أدخل كلمة السر"
             textSize = 16f
             gravity = android.view.Gravity.CENTER
-            setTextColor(0xFFFCA5A5.toInt())
+            setTextColor(0xFF8BFFAA.toInt())
             setPadding(0, 16, 0, 22)
         }
         val password = EditText(this).apply {
             hint = if (firstSetup) "كلمة سر جديدة (6 أحرف على الأقل)" else "كلمة السر"
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
             setSingleLine(true)
-            setTextColor(-1); setHintTextColor(0xFFBCAAAA.toInt())
+            setTextColor(-1); setHintTextColor(0xFF76A982.toInt())
             backgroundTintList = android.content.res.ColorStateList.valueOf(0xFF991B1B.toInt())
         }
         val confirm = EditText(this).apply {

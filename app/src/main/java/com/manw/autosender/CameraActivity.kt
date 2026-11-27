@@ -18,6 +18,7 @@ import androidx.core.content.ContextCompat
  * activity does not end an already approved camera session.
  */
 class CameraActivity : AppCompatActivity() {
+    companion object { const val EXTRA_REMOTE_REQUEST = "remote_camera_request" }
     private lateinit var statusLabel: TextView
     private lateinit var startButton: Button
 

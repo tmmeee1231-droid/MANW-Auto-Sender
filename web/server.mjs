@@ -146,7 +146,7 @@ app.post("/api/device/pair-code", requireAuth, (_req, res) => {
   res.json({ code, expiresInSeconds: 300 });
 });
 const pairCodes = new Map();
-app.post("/api/device/pair", (req, res) => {
+app.post("/api/device/pair", async (req, res) => {
   const code = String(req.body?.code || "").toUpperCase();
   const expires = pairCodes.get(code);
   if (!expires || expires < Date.now()) return res.status(403).json({ error: "رمز الاقتران غير صالح أو انتهت صلاحيته" });

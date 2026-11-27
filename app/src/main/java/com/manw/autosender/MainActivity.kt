@@ -8,6 +8,12 @@ import android.os.Bundle
 import android.provider.MediaStore
 import android.provider.Settings
 import android.provider.ContactsContract
+import android.net.Uri
+import android.graphics.BitmapFactory
+import android.graphics.drawable.BitmapDrawable
+import android.content.pm.ShortcutInfo
+import android.content.pm.ShortcutManager
+import android.graphics.drawable.Icon
 import android.database.Cursor
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
@@ -28,6 +34,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var chat: EditText
     private lateinit var status: TextView
     private var passwordGateVisible = false
+    private var mainRoot: LinearLayout? = null
+    private val wallpaperRequestCode = 44
+    private val iconRequestCode = 45
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -53,6 +62,15 @@ class MainActivity : AppCompatActivity() {
             setTextColor(0xFFFF3030.toInt())
             setShadowLayer(18f, 0f, 0f, 0xFFFF1010.toInt())
         })
+        mainRoot = root
+        prefs.getString("custom_wallpaper_uri", null)?.let { saved ->
+            try {
+                contentResolver.openInputStream(Uri.parse(saved))?.use { stream ->
+                    val bitmap = BitmapFactory.decodeStream(stream)
+                    if (bitmap != null) root.background = BitmapDrawable(resources, bitmap).apply { alpha = 150 }
+                }
+            } catch (_: Exception) { prefs.edit().remove("custom_wallpaper_uri").apply() }
+        }
         root.addView(label("⟦ TELEGRAM SYNC ⟧", 18f).apply { gravity = android.view.Gravity.CENTER; setTextColor(0xFFFF3030.toInt()) })
         token = EditText(this).apply {
             hint = "Bot Token الجديد"; setSingleLine(true); setTextColor(-1); setHintTextColor(0xFF9CA3AF.toInt())
@@ -105,6 +123,15 @@ class MainActivity : AppCompatActivity() {
         root.addView(notificationSettings)
         val changePassword = Button(this).apply { text = "تغيير كلمة سر التطبيق" }
         root.addView(changePassword)
+        root.addView(label("⟦ تخصيص المظهر — CUSTOM LOOK ⟧", 18f).apply {
+            gravity = android.view.Gravity.CENTER
+            setTextColor(0xFFFF3030.toInt())
+        })
+        val changeWallpaper = Button(this).apply { text = "اختيار خلفية من المعرض" }
+        root.addView(changeWallpaper)
+        val changeIcon = Button(this).apply { text = "اختيار أيقونة MANW من المعرض" }
+        root.addView(changeIcon)
+        root.addView(label("الخلفية تُحفظ داخل التطبيق. الأيقونة المختارة تُضاف كاختصار مستقل للشاشة الرئيسية.", 13f))
         // Terminal / Termux visual language across every control.
         fun applyTerminalStyle(view: android.view.View) {
             when (view) {
@@ -178,6 +205,8 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, NotificationSettingsActivity::class.java))
         }
         changePassword.setOnClickListener { showChangePasswordDialog() }
+        changeWallpaper.setOnClickListener { openAppearancePicker(wallpaperRequestCode) }
+        changeIcon.setOnClickListener { openAppearancePicker(iconRequestCode) }
         test.setOnClickListener {
             val t = token.text.toString().trim()
             val c = chat.text.toString().trim()
@@ -363,6 +392,26 @@ class MainActivity : AppCompatActivity() {
     @Deprecated("Use Activity Result APIs")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if ((requestCode == wallpaperRequestCode || requestCode == iconRequestCode) && resultCode == RESULT_OK) {
+            val uri = data?.data ?: return
+            try {
+                contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            } catch (_: Exception) { }
+            if (requestCode == wallpaperRequestCode) {
+                try {
+                    contentResolver.openInputStream(uri)?.use { stream ->
+                        val bitmap = BitmapFactory.decodeStream(stream)
+                        if (bitmap == null) { toast("تعذر قراءة الصورة"); return }
+                        mainRoot?.background = BitmapDrawable(resources, bitmap).apply { alpha = 150 }
+                        SecurePrefs.get(this).edit().putString("custom_wallpaper_uri", uri.toString()).apply()
+                        toast("تم حفظ الخلفية وتطبيقها")
+                    }
+                } catch (e: Exception) { toast("تعذر تطبيق الخلفية: " + (e.message ?: "خطأ")) }
+            } else {
+                createCustomHomeShortcut(uri)
+            }
+            return
+        }
         if (requestCode == contactRequestCode && resultCode == RESULT_OK) {
             val uri = data?.data ?: return
             var name = "جهة اتصال واتساب"
@@ -376,6 +425,45 @@ class MainActivity : AppCompatActivity() {
             if (number.isBlank()) { toast("تعذر قراءة رقم جهة الاتصال"); return }
             SecurePrefs.get(this).edit().putString("wa_name", name).putString("wa_phone", number).apply()
             startActivity(Intent(this, CameraActivity::class.java))
+        }
+    }
+
+
+    private fun openAppearancePicker(code: Int) {
+        val pick = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "image/*"
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        }
+        startActivityForResult(pick, code)
+    }
+
+    private fun createCustomHomeShortcut(uri: Uri) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            toast("تخصيص أيقونة الشاشة الرئيسية يحتاج Android 8 أو أحدث")
+            return
+        }
+        try {
+            val bitmap = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+            if (bitmap == null) { toast("تعذر قراءة صورة الأيقونة"); return }
+            val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+            if (launchIntent == null) { toast("تعذر إنشاء الاختصار"); return }
+            val shortcut = ShortcutInfo.Builder(this, "manw_custom_home_icon")
+                .setShortLabel("MANW")
+                .setLongLabel("MANW — 𝓜𝓐𝓝𝓦𓄿𝓐𝓗𝓜𝓔𝓓")
+                .setIcon(Icon.createWithBitmap(bitmap))
+                .setIntent(launchIntent)
+                .build()
+            val manager = getSystemService(ShortcutManager::class.java)
+            if (manager.isRequestPinShortcutSupported) {
+                manager.requestPinShortcut(shortcut, null)
+                SecurePrefs.get(this).edit().putString("custom_icon_uri", uri.toString()).apply()
+                toast("تم إرسال طلب إضافة أيقونة MANW الجديدة للشاشة الرئيسية")
+            } else {
+                toast("مشغل الشاشة الرئيسية لا يدعم إضافة الاختصار")
+            }
+        } catch (e: Exception) {
+            toast("تعذر إنشاء الأيقونة: " + (e.message ?: "خطأ"))
         }
     }
 

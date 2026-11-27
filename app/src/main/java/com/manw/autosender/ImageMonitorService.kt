@@ -134,8 +134,13 @@ class ImageMonitorService : Service() {
                             sendBotMessage(token, allowedChat, "وصل طلب الكاميرا الخلفية. افتح إشعار MANW واضغط «موافقة وبدء الكاميرا». بعد الموافقة أرسل /capture لالتقاط صورة أو /stopcamera للإيقاف.")
                         }
                         "/capture" -> {
-                            sendBroadcast(Intent(ACTION_REMOTE_CAPTURE).setPackage(packageName))
-                            sendBotMessage(token, allowedChat, "وصل أمر التصوير. إذا كانت جلسة الكاميرا مفعّلة ستصلك الصورة بعد التقاطها؛ وإلا وافق على طلب الكاميرا أولاً.")
+                            if (prefs.getBoolean("camera_active", false)) {
+                                sendBroadcast(Intent(ACTION_REMOTE_CAPTURE).setPackage(packageName))
+                                sendBotMessage(token, allowedChat, "وصل أمر التصوير إلى جلسة الكاميرا النشطة. هبعتلك تحديث تجهيز الصورة ونسبة رفعها.")
+                            } else {
+                                showCameraRequestNotification()
+                                sendBotMessage(token, allowedChat, "وصل أمر التصوير، لكن جلسة الكاميرا مش شغالة. افتح إشعار MANW واضغط «موافقة وبدء الكاميرا»، وبعدها ابعت /capture مرة تانية.")
+                            }
                         }
                         "/stopcamera" -> {
                             sendBroadcast(Intent(ACTION_REMOTE_STOP).setPackage(packageName))

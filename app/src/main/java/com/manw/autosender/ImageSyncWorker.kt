@@ -54,9 +54,15 @@ class ImageSyncWorker(context: Context, params: WorkerParameters) : CoroutineWor
                 .post(okhttp3.FormBody.Builder().add("chat_id", chatId).add("action", "upload_photo").build())
                 .build()
             client.newCall(request).execute().use { response ->
-                val json = JSONObject(response.body?.string().orEmpty())
+                val raw = response.body?.string().orEmpty()
+                val json = try { JSONObject(raw) } catch (_: Exception) { JSONObject() }
                 if (response.isSuccessful && json.optBoolean("ok")) "الاتصال ناجح وChat ID صحيح"
-                else "تيليجرام رفض البيانات: " + json.optString("description", "راجع التوكن وChat ID وافتح البوت واضغط Start")
+                else {
+                    val code = json.optInt("error_code", response.code)
+                    val description = json.optString("description").takeIf { it.isNotBlank() }
+                        ?: raw.take(240).ifBlank { "لم يرجع تيليجرام تفاصيل إضافية" }
+                    "رفض تيليجرام البيانات (HTTP $code): $description"
+                }
             }
         } catch (_: Exception) { "تعذر الاتصال. تأكد من الإنترنت وصحة التوكن" }
     }

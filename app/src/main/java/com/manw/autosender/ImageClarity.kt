@@ -13,7 +13,11 @@ import java.io.FileOutputStream
 
 object ImageClarity {
     fun createReadableCopy(source: File, target: File) {
-        val options = BitmapFactory.Options().apply { inSampleSize = 1 }
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(source.absolutePath, bounds)
+        var sample = 1
+        while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 2048) sample *= 2
+        val options = BitmapFactory.Options().apply { inSampleSize = sample.coerceAtLeast(1) }
         val decoded = BitmapFactory.decodeFile(source.absolutePath, options)
             ?: throw IllegalArgumentException("تعذر قراءة الصورة")
         val exif = ExifInterface(source.absolutePath)
@@ -46,7 +50,7 @@ object ImageClarity {
         }
         Canvas(output).drawBitmap(oriented, 0f, 0f, paint)
         FileOutputStream(target).use { stream ->
-            if (!output.compress(Bitmap.CompressFormat.JPEG, 97, stream)) {
+            if (!output.compress(Bitmap.CompressFormat.JPEG, 88, stream)) {
                 throw IllegalStateException("تعذر حفظ النسخة المحسّنة")
             }
         }

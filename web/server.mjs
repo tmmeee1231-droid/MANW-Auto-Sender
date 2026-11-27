@@ -192,7 +192,8 @@ app.post("/api/control", requireAuth, (req, res) => {
     const value = Number(req.body?.value);
     if (!Number.isFinite(value)) return res.status(400).json({ error: "قيمة التقريب غير صالحة" });
     payload.value = Math.max(0, Math.min(1, value));
-  }\n  if (command === "whatsapp_open") {
+  }
+  if (command === "whatsapp_open") {
     const phone = String(req.body?.phone || "").replace(/[^0-9]/g, "");
     const message = String(req.body?.message || "").slice(0, 1000);
     if (phone.length < 8 || phone.length > 15) return res.status(400).json({ error: "اكتب رقم واتساب دوليًا صحيحًا من 8 إلى 15 رقمًا" });

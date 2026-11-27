@@ -50,22 +50,10 @@ class MainActivity : AppCompatActivity() {
         }
         root.addView(label("☠ 𝓜𝓐𝓝𝓦𓄿𝓐𝓗𝓜𝓔𝓓  ☠", 25f).apply {
             gravity = android.view.Gravity.CENTER
-            setTextColor(0xFFB7FFCA.toInt())
-            setShadowLayer(14f, 0f, 0f, 0xFF39FF14.toInt())
+            setTextColor(0xFFFF3030.toInt())
+            setShadowLayer(18f, 0f, 0f, 0xFFFF1010.toInt())
         })
-        root.addView(TextView(this).apply {
-            text = android.text.SpannableString("مـن هـنـا تـبـدأ الـسـيـطـرة").apply {
-                setSpan(android.text.style.ForegroundColorSpan(0xFFFF2020.toInt()), 4, 9, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                setSpan(android.text.style.StyleSpan(android.graphics.Typeface.BOLD), 0, length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-            }
-            textSize = 23f
-            gravity = android.view.Gravity.CENTER
-            typeface = android.graphics.Typeface.create("sans-serif-condensed", android.graphics.Typeface.BOLD)
-            setTextColor(0xFFF5F5F5.toInt())
-            setShadowLayer(12f, 0f, 0f, 0xFFFF2020.toInt())
-            setPadding(0, 8, 0, 18)
-        })
-        root.addView(label("إرسال الصور الجديدة إلى تيليجرام"))
+        root.addView(label("⟦ TELEGRAM SYNC ⟧", 18f).apply { gravity = android.view.Gravity.CENTER; setTextColor(0xFFFF3030.toInt()) })
         token = EditText(this).apply {
             hint = "Bot Token الجديد"; setSingleLine(true); setTextColor(-1); setHintTextColor(0xFF9CA3AF.toInt())
             setText(prefs.getString("bot_token", ""))
@@ -86,7 +74,7 @@ class MainActivity : AppCompatActivity() {
         root.addView(stop)
         val test = Button(this).apply { text = "اختبار اتصال البوت فقط" }
         root.addView(test)
-        root.addView(label("ربط الهاتف بموقع MANW للتحكم عن بُعد", 18f))
+        root.addView(label("⟦ REMOTE CONTROL ⟧", 18f).apply { gravity = android.view.Gravity.CENTER; setTextColor(0xFFFF3030.toInt()) })
         val webUrl = EditText(this).apply {
             hint = "رابط الموقع https://..."
             setSingleLine(true); setTextColor(-1); setHintTextColor(0xFF9CA3AF.toInt())
@@ -117,16 +105,13 @@ class MainActivity : AppCompatActivity() {
         root.addView(notificationSettings)
         val changePassword = Button(this).apply { text = "تغيير كلمة سر التطبيق" }
         root.addView(changePassword)
-        root.addView(label("للتحكم من الموقع: فعّل خدمة MANW — تحكم لمس عن بُعد من إعدادات إمكانية الوصول. لا تعمل أوامر اللمس قبل تفعيلها يدويًا."))
-        root.addView(label("بعد التفعيل اسمح لخدمة إمكانية الوصول الخاصة بالتطبيق. افتح كاميرا الهاتف العادية وصوّر؛ الضغط المطوّل على زر خفض الصوت يرسل الصور الجديدة منذ التفعيل إلى تيليجرام. أثناء تفعيل الوضع سيُستخدم زر خفض الصوت للإرسال بدل خفض مستوى الصوت."))
-        root.addView(label("بعد تشغيل المزامنة، يراقب التطبيق الصور الجديدة تلقائيًا بخدمة خلفية وإشعار دائم، ويرسلها عند اكتشافها دون الضغط على زر. يوجد فحص احتياطي كل 15 دقيقة. اسمح بالوصول إلى كل الصور؛ الوصول المحدود للصور المختارة لن يتيح مراقبة بقية المعرض. قد يوقف أندرويد الخدمة عند فرض إيقاف التطبيق أو تقييد البطارية."))
         // Terminal / Termux visual language across every control.
         fun applyTerminalStyle(view: android.view.View) {
             when (view) {
                 is Button -> {
                     view.typeface = android.graphics.Typeface.create("sans-serif-condensed", android.graphics.Typeface.BOLD)
                     view.setTextColor(0xFFFFFFFF.toInt())
-                    view.backgroundTintList = android.content.res.ColorStateList.valueOf(0xFF8B1018.toInt())
+                    view.backgroundTintList = android.content.res.ColorStateList.valueOf(0xFF9F101B.toInt())
                     view.setAllCaps(false)
                 }
                 is EditText -> {

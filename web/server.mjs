@@ -29,10 +29,21 @@ async function hashPassword(password, salt = randomBytes(16).toString("hex")) {
   const key = await scrypt(password, salt, 64);
   return { salt, hash: Buffer.from(key).toString("hex") };
 }
+let saveQueue = Promise.resolve();
 async function saveState() {
-  const temp = STATE_FILE + ".tmp";
-  await fs.writeFile(temp, JSON.stringify(state, null, 2), { mode: 0o600 });
-  await fs.rename(temp, STATE_FILE);
+  const snapshot = JSON.stringify(state, null, 2);
+  const write = async () => {
+    const temp = STATE_FILE + "." + randomBytes(12).toString("hex") + ".tmp";
+    try {
+      await fs.writeFile(temp, snapshot, { mode: 0o600 });
+      await fs.rename(temp, STATE_FILE);
+    } catch (error) {
+      await fs.rm(temp, { force: true }).catch(() => {});
+      throw error;
+    }
+  };
+  saveQueue = saveQueue.then(write, write);
+  return saveQueue;
 }
 try {
   state = JSON.parse(await fs.readFile(STATE_FILE, "utf8"));

@@ -140,7 +140,7 @@ class CameraSessionService : Service(), LifecycleOwner {
      * Detect text in camera frames and meter autofocus/exposure on its center,
      * equivalent to automatically tapping the text on the camera preview.
      */
-    private fun analyzeForTextAndFocus(proxy: ImageAnalysis.ImageProxy) {
+    private fun analyzeForTextAndFocus(proxy: ImageProxy) {
         val mediaImage = proxy.image
         if (mediaImage == null || !analyzing.compareAndSet(false, true)) {
             proxy.close()

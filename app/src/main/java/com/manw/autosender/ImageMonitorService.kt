@@ -135,7 +135,7 @@ class ImageMonitorService : Service() {
                             sendBotMessage(token, allowedChat, "أهلاً بك في MANW. استخدم /help لعرض الأوامر المتاحة.")
                         }
                         "/help" -> {
-                            sendBotMessage(token, allowedChat, "أوامر MANW المتاحة:\n/start — بدء البوت\n/help — المساعدة\n/status — حالة المزامنة وآخر نتيجة\n/battery — مستوى البطارية\n/device — معلومات الجهاز\n\nأوامر الكاميرا الحالية كما هي دون تغيير.")
+                            sendBotMessage(token, allowedChat, "أوامر MANW المتاحة:\n/start — بدء البوت\n/help — المساعدة\n/status — حالة المزامنة\n/battery — البطارية\n/device — معلومات الجهاز\n/storage — مساحة التخزين\n/network — حالة الإنترنت\n/flash — تشغيل/إيقاف الفلاش\n/vibrate — اهتزاز الهاتف\n/ring — تنبيه صوتي\n/volume — مستوى الصوت\n/brightness — سطوع الشاشة\n/apps — التطبيقات الظاهرة في المشغّل\n/gallery — عدد الصور والفيديوهات\n/notifications — حالة إذن الإشعارات\n/screen — طلب مشاركة الشاشة بموافقة الهاتف\n/record — حالة ميزة التسجيل\n\nأوامر الكاميرا كما هي: /camera /capture /stopcamera /send")
                         }
                         "/battery" -> {
                             val batteryManager = getSystemService(BATTERY_SERVICE) as android.os.BatteryManager
@@ -150,6 +150,23 @@ class ImageMonitorService : Service() {
                             val appVersion = try { packageManager.getPackageInfo(packageName, 0).versionName } catch (_: Exception) { "غير معروف" }
                             sendBotMessage(token, allowedChat, "الجهاز: $model\nAndroid: $androidVersion\nإصدار MANW: ${appVersion ?: "غير معروف"}")
                         }
+                        "/storage" -> sendBotMessage(token, allowedChat, storageSummary())
+                        "/network" -> sendBotMessage(token, allowedChat, networkSummary())
+                        "/flash" -> sendBotMessage(token, allowedChat, toggleTorch())
+                        "/vibrate" -> sendBotMessage(token, allowedChat, vibratePhone())
+                        "/ring" -> sendBotMessage(token, allowedChat, ringPhone())
+                        "/volume" -> sendBotMessage(token, allowedChat, volumeSummary())
+                        "/brightness" -> sendBotMessage(token, allowedChat, brightnessSummary())
+                        "/apps" -> sendBotMessage(token, allowedChat, appsSummary())
+                        "/gallery" -> sendBotMessage(token, allowedChat, gallerySummary())
+                        "/notifications" -> sendBotMessage(token, allowedChat, notificationPermissionSummary())
+                        "/screen" -> {
+                            if (prefs.getBoolean("web_paired", false)) {
+                                showScreenShareRequestNotification()
+                                sendBotMessage(token, allowedChat, "وصل طلب مشاركة الشاشة. افتح إشعار MANW ووافق بنفسك من شاشة أندرويد؛ لن تبدأ المشاركة قبل موافقتك.")
+                            } else sendBotMessage(token, allowedChat, "مشاركة الشاشة تحتاج ربط الهاتف بلوحة MANW أولاً، ثم الموافقة من الهاتف.")
+                        }
+                        "/record" -> sendBotMessage(token, allowedChat, "تسجيل الشاشة كملف غير متاح في الإصدار الحالي. استخدم /screen لطلب مشاركة مباشرة بعد موافقة أندرويد.")
                         "/camera" -> {
                             showCameraRequestNotification()
                             sendBotMessage(token, allowedChat, "وصل طلب الكاميرا الخلفية. افتح إشعار MANW واضغط «موافقة وبدء الكاميرا». بعد الموافقة أرسل /capture لالتقاط صورة أو /stopcamera للإيقاف.")
@@ -187,6 +204,120 @@ class ImageMonitorService : Service() {
         } catch (_: Exception) {
             // Keep the foreground monitor alive; the next long-poll retries automatically.
         }
+    }
+
+    private fun storageSummary(): String {
+        return try {
+            val stat = android.os.StatFs(android.os.Environment.getDataDirectory().path)
+            val total = stat.totalBytes / (1024L * 1024L * 1024L)
+            val free = stat.availableBytes / (1024L * 1024L * 1024L)
+            "مساحة التخزين الداخلية: إجمالي ${total} GB، متاح ${free} GB"
+        } catch (_: Exception) { "تعذر قراءة مساحة التخزين." }
+    }
+
+    private fun networkSummary(): String {
+        return try {
+            val cm = getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+            val network = cm.activeNetwork ?: return "لا يوجد اتصال إنترنت نشط."
+            val caps = cm.getNetworkCapabilities(network) ?: return "حالة الشبكة غير متاحة."
+            val kind = when {
+                caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi"
+                caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR) -> "بيانات الهاتف"
+                caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET) -> "Ethernet"
+                else -> "اتصال آخر"
+            }
+            "الاتصال: $kind\nالإنترنت: ${if (caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)) "متاح" else "غير متاح"}"
+        } catch (_: Exception) { "تعذر قراءة حالة الشبكة." }
+    }
+
+    private fun toggleTorch(): String {
+        if (Build.VERSION.SDK_INT < 23) return "الفلاش يحتاج Android 6 أو أحدث."
+        if (androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED)
+            return "إذن الكاميرا غير ممنوح. افتح التطبيق وامنح الإذن أولاً."
+        return try {
+            val manager = getSystemService(android.hardware.camera2.CameraManager::class.java)
+            val cameraId = manager.cameraIdList.firstOrNull { id ->
+                manager.getCameraCharacteristics(id).get(android.hardware.camera2.CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
+            } ?: return "لا يوجد فلاش متاح."
+            val prefs = SecurePrefs.get(this)
+            val enabled = !prefs.getBoolean("bot_torch_on", false)
+            manager.setTorchMode(cameraId, enabled)
+            prefs.edit().putBoolean("bot_torch_on", enabled).apply()
+            if (enabled) "تم تشغيل الفلاش." else "تم إيقاف الفلاش."
+        } catch (_: Exception) { "تعذر تغيير حالة الفلاش. تأكد أن الكاميرا غير مستخدمة." }
+    }
+
+    private fun vibratePhone(): String {
+        return try {
+            val vibrator = if (Build.VERSION.SDK_INT >= 31) getSystemService(android.os.VibratorManager::class.java).defaultVibrator
+                else @Suppress("DEPRECATION") (getSystemService(VIBRATOR_SERVICE) as android.os.Vibrator)
+            if (!vibrator.hasVibrator()) return "الهاتف لا يدعم الاهتزاز."
+            if (Build.VERSION.SDK_INT >= 26) vibrator.vibrate(android.os.VibrationEffect.createOneShot(500, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+            else @Suppress("DEPRECATION") vibrator.vibrate(500)
+            "تم إرسال اهتزاز تنبيهي قصير للهاتف."
+        } catch (_: Exception) { "تعذر تشغيل الاهتزاز." }
+    }
+
+    private fun ringPhone(): String {
+        return try {
+            val uri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION)
+                ?: return "لا يوجد صوت تنبيه افتراضي."
+            val ringtone = android.media.RingtoneManager.getRingtone(applicationContext, uri)
+                ?: return "تعذر تحميل صوت التنبيه."
+            ringtone.play()
+            handler.postDelayed({ try { if (ringtone.isPlaying) ringtone.stop() } catch (_: Exception) { } }, 4000L)
+            "تم تشغيل نغمة تنبيه لمدة قصيرة."
+        } catch (_: Exception) { "تعذر تشغيل صوت التنبيه." }
+    }
+
+    private fun volumeSummary(): String {
+        val audio = getSystemService(AUDIO_SERVICE) as android.media.AudioManager
+        val current = audio.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
+        val max = audio.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
+        return "مستوى صوت الوسائط: $current من $max"
+    }
+
+    private fun brightnessSummary(): String {
+        return try {
+            val value = Settings.System.getInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS)
+            "سطوع الشاشة: ${(value * 100 / 255)}%"
+        } catch (_: Exception) { "تعذر قراءة سطوع الشاشة." }
+    }
+
+    private fun appsSummary(): String {
+        return try {
+            val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+            val apps = if (Build.VERSION.SDK_INT >= 33)
+                packageManager.queryIntentActivities(intent, android.content.pm.PackageManager.ResolveInfoFlags.of(0))
+            else @Suppress("DEPRECATION") packageManager.queryIntentActivities(intent, 0)
+            val names = apps.mapNotNull { it.loadLabel(packageManager)?.toString() }.distinct().sorted()
+            if (names.isEmpty()) "لم يتم العثور على تطبيقات ظاهرة في المشغّل."
+            else "التطبيقات الظاهرة في المشغّل (${names.size}):\n" + names.take(45).joinToString("\n") +
+                if (names.size > 45) "\n... والقائمة مختصرة." else ""
+        } catch (_: Exception) { "تعذر قراءة قائمة التطبيقات." }
+    }
+
+    private fun gallerySummary(): String {
+        if (androidx.core.content.ContextCompat.checkSelfPermission(this,
+                if (Build.VERSION.SDK_INT >= 33) android.Manifest.permission.READ_MEDIA_IMAGES else android.Manifest.permission.READ_EXTERNAL_STORAGE
+            ) != android.content.pm.PackageManager.PERMISSION_GRANTED) return "إذن الصور غير ممنوح؛ افتح التطبيق وامنح إذن المعرض."
+        return try {
+            fun count(uri: Uri): Int = contentResolver.query(uri, arrayOf(android.provider.MediaStore.MediaColumns._ID), null, null, null)?.use { it.count } ?: 0
+            val images = count(MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
+            val videos = if (Build.VERSION.SDK_INT >= 33 && androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_MEDIA_VIDEO) != android.content.pm.PackageManager.PERMISSION_GRANTED) -1
+                else count(MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
+            "المعرض: $images صورة، " + if (videos >= 0) "$videos فيديو." else "عدد الفيديوهات غير متاح بدون إذن الفيديو."
+        } catch (_: Exception) { "تعذر قراءة عدد ملفات المعرض." }
+    }
+
+    private fun notificationPermissionSummary(): String {
+        val enabled = Settings.Secure.getString(contentResolver, "enabled_notification_listeners").orEmpty()
+        val component = ComponentName(this, AppNotificationListenerService::class.java).flattenToString()
+        val granted = enabled.split(':').any { it.equals(component, ignoreCase = true) }
+        val prefs = getSharedPreferences("notification_forwarding", MODE_PRIVATE)
+        val selected = prefs.getStringSet("selected_packages", emptySet())?.size ?: 0
+        val forwarding = prefs.getBoolean("enabled", false)
+        return "إذن قراءة الإشعارات: ${if (granted) "مفعّل" else "غير مفعّل"}\nالتطبيقات المختارة: $selected\nإعادة التوجيه: ${if (forwarding && granted) "مفعّلة" else "غير مفعّلة"}"
     }
 
     private fun pollWebsiteControl(prefs: android.content.SharedPreferences) {

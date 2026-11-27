@@ -108,6 +108,33 @@ class MainActivity : AppCompatActivity() {
         root.addView(label("للتحكم من الموقع: فعّل خدمة MANW — تحكم لمس عن بُعد من إعدادات إمكانية الوصول. لا تعمل أوامر اللمس قبل تفعيلها يدويًا."))
         root.addView(label("بعد التفعيل اسمح لخدمة إمكانية الوصول الخاصة بالتطبيق. افتح كاميرا الهاتف العادية وصوّر؛ الضغط المطوّل على زر خفض الصوت يرسل الصور الجديدة منذ التفعيل إلى تيليجرام. أثناء تفعيل الوضع سيُستخدم زر خفض الصوت للإرسال بدل خفض مستوى الصوت."))
         root.addView(label("بعد تشغيل المزامنة، يراقب التطبيق الصور الجديدة تلقائيًا بخدمة خلفية وإشعار دائم، ويرسلها عند اكتشافها دون الضغط على زر. يوجد فحص احتياطي كل 15 دقيقة. اسمح بالوصول إلى كل الصور؛ الوصول المحدود للصور المختارة لن يتيح مراقبة بقية المعرض. قد يوقف أندرويد الخدمة عند فرض إيقاف التطبيق أو تقييد البطارية."))
+        // Terminal / Termux visual language across every control.
+        fun applyTerminalStyle(view: android.view.View) {
+            when (view) {
+                is TextView -> {
+                    view.typeface = android.graphics.Typeface.MONOSPACE
+                    if (view !is EditText && view !is Button) {
+                        view.setTextColor(0xFF9BFFB0.toInt())
+                    }
+                }
+                is EditText -> {
+                    view.typeface = android.graphics.Typeface.MONOSPACE
+                    view.setTextColor(0xFFE5FFE9.toInt())
+                    view.setHintTextColor(0xFF4F8F5C.toInt())
+                    view.backgroundTintList = android.content.res.ColorStateList.valueOf(0xFF39FF14.toInt())
+                }
+                is Button -> {
+                    view.typeface = android.graphics.Typeface.MONOSPACE
+                    view.setTextColor(0xFF071B0B.toInt())
+                    view.backgroundTintList = android.content.res.ColorStateList.valueOf(0xFF39FF14.toInt())
+                    view.setAllCaps(false)
+                }
+            }
+            if (view is android.view.ViewGroup) {
+                for (index in 0 until view.childCount) applyTerminalStyle(view.getChildAt(index))
+            }
+        }
+        applyTerminalStyle(root)
         setContentView(ScrollView(this).apply { addView(root) })
 
         save.setOnClickListener {

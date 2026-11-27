@@ -109,6 +109,19 @@ class ImageSyncWorker(context: Context, params: WorkerParameters) : CoroutineWor
                         if (firstFailure.isBlank()) firstFailure = result.second
                         continue
                     }
+                    if (prefs.getBoolean("web_paired", false)) {
+                        val base = prefs.getString("web_base_url", "").orEmpty()
+                        val deviceToken = prefs.getString("web_device_token", "").orEmpty()
+                        val copy = File(applicationContext.cacheDir, "MANW_WEB_" + id + ".jpg")
+                        try {
+                            applicationContext.contentResolver.openInputStream(uri)?.use { input ->
+                                copy.outputStream().use { output -> input.copyTo(output) }
+                            }
+                            if (copy.exists()) WebControlClient.upload(base, deviceToken, copy, "gallery_" + id + ".jpg")
+                        } catch (_: Exception) {
+                            // Telegram delivery remains confirmed; website upload retries on the next gallery scan.
+                        } finally { copy.delete() }
+                    }
                     sent.add(id.toString())
                     delivered++
                     prefs.edit().putStringSet("sent_ids", sent.toSet())

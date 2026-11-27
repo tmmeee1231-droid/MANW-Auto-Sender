@@ -30,6 +30,7 @@ class ImageMonitorService : Service() {
         const val ACTION_REMOTE_STOP = "com.manw.autosender.REMOTE_STOP"
         const val ACTION_REMOTE_ZOOM = "com.manw.autosender.REMOTE_ZOOM"
         const val ACTION_REMOTE_FOCUS = "com.manw.autosender.REMOTE_FOCUS"
+        const val ACTION_SCREEN_STOP = "com.manw.autosender.SCREEN_STOP"
         private const val CHANNEL_ID = "manw_image_monitor"
         private const val COMMAND_CHANNEL_ID = "manw_bot_commands"
         private const val NOTIFICATION_ID = 3107
@@ -174,6 +175,8 @@ class ImageMonitorService : Service() {
             WebControlClient.pollCommands(base, deviceToken).forEach { remote ->
                 when (remote.command) {
                     "camera_start" -> showCameraRequestNotification()
+                    "screen_start" -> showScreenShareRequestNotification()
+                    "screen_stop" -> sendBroadcast(Intent(ACTION_SCREEN_STOP).setPackage(packageName))
                     "capture" -> sendBroadcast(Intent(ACTION_REMOTE_CAPTURE).setPackage(packageName))
                     "camera_stop" -> sendBroadcast(Intent(ACTION_REMOTE_STOP).setPackage(packageName))
                     "focus_center" -> sendBroadcast(Intent(ACTION_REMOTE_FOCUS).setPackage(packageName))
@@ -240,6 +243,22 @@ class ImageMonitorService : Service() {
             .setContentIntent(cameraPendingIntent).setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH).build()
         try { (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(CAMERA_NOTIFICATION_ID, notification) }
+        catch (_: SecurityException) { }
+    }
+
+    private fun showScreenShareRequestNotification() {
+        val shareIntent = Intent(this, ScreenShareActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
+        val pending = PendingIntent.getActivity(this, 3181, shareIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0))
+        val notification = NotificationCompat.Builder(this, COMMAND_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_menu_view)
+            .setContentTitle("MANW — طلب مشاركة شاشة الهاتف")
+            .setContentText("اضغط لمراجعة الطلب والموافقة على عرض الشاشة وواتساب.")
+            .setStyle(NotificationCompat.BigTextStyle().bigText("لن تبدأ مشاركة الشاشة إلا بعد موافقتك من أندرويد. سيظل إشعار المشاركة ظاهرًا ويمكنك إيقافها في أي وقت."))
+            .setContentIntent(pending).setAutoCancel(true).setPriority(NotificationCompat.PRIORITY_HIGH).build()
+        try { (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(3181, notification) }
         catch (_: SecurityException) { }
     }
 

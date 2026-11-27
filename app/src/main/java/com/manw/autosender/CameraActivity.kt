@@ -1,12 +1,9 @@
 package com.manw.autosender
 
 import android.Manifest
-import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Bundle
 import android.view.KeyEvent
-import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -20,13 +17,22 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.asRequestBody
+import org.json.JSONObject
 import java.io.File
+import java.util.concurrent.TimeUnit
 
 class CameraActivity : AppCompatActivity() {
     private lateinit var previewView: PreviewView
+    private lateinit var statusLabel: TextView
     private var imageCapture: ImageCapture? = null
-    private lateinit var recipientLabel: TextView
-    private var lastPhoto: File? = null
+    private val capturedPhotos = mutableListOf<File>()
+    private var isSending = false
+    private var longPressHandled = false
 
     private val permission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) startCamera() else {
@@ -38,43 +44,36 @@ class CameraActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val prefs = SecurePrefs.get(this)
-        val phone = prefs.getString("wa_phone", "") ?: ""
-        val name = prefs.getString("wa_name", "جهة الاتصال المختارة") ?: "جهة الاتصال المختارة"
+        val chatId = prefs.getString("chat_id", "") ?: ""
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(0xFF10111A.toInt())
         }
-        recipientLabel = TextView(this).apply {
-            text = "المستلم المحدد: $name ($phone)\nزر الصوت يلتقط صورة بالكاميرا الخلفية"
+        statusLabel = TextView(this).apply {
+            text = "إرسال تيليجرام إلى: ${if (chatId.isBlank()) "لم يتم ضبط Chat ID" else chatId}\nزر رفع الصوت: تصوير صورة\nاضغط مطولاً على زر خفض الصوت: إرسال كل الصور"
             textSize = 16f
             setTextColor(0xFFFFFFFF.toInt())
             setPadding(20, 16, 20, 16)
         }
-        previewView = PreviewView(this).apply { implementationMode = PreviewView.ImplementationMode.COMPATIBLE }
-        root.addView(recipientLabel)
+        previewView = PreviewView(this).apply {
+            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+        }
+        root.addView(statusLabel)
         root.addView(previewView, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
         ))
-        val capture = Button(this).apply { text = "التقاط صورة (أو زر الصوت)" }
+        val capture = Button(this).apply { text = "التقاط صورة (زر رفع الصوت)" }
         root.addView(capture)
         capture.setOnClickListener { takePhoto() }
-        val share = Button(this).apply {
-            text = "إرسال آخر صورة عبر واتساب"
-            isEnabled = false
-        }
-        root.addView(share)
-        share.setOnClickListener { lastPhoto?.let { sharePhoto(it) } }
+        val send = Button(this).apply { text = "إرسال الصور (ضغط مطوّل على خفض الصوت)" }
+        root.addView(send)
+        send.setOnClickListener { sendCapturedPhotos() }
         setContentView(root)
-        captureButton = capture
-        shareButton = share
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
             startCamera()
         } else permission.launch(Manifest.permission.CAMERA)
     }
-
-    private lateinit var captureButton: Button
-    private lateinit var shareButton: Button
 
     private fun startCamera() {
         val future = ProcessCameraProvider.getInstance(this)
@@ -95,49 +94,117 @@ class CameraActivity : AppCompatActivity() {
     }
 
     private fun takePhoto() {
+        if (isSending) return
         val capture = imageCapture ?: return
         val file = File(cacheDir, "MANW_${System.currentTimeMillis()}.jpg")
         val options = ImageCapture.OutputFileOptions.Builder(file).build()
         capture.takePicture(options, ContextCompat.getMainExecutor(this), object : ImageCapture.OnImageSavedCallback {
             override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                lastPhoto = file
-                shareButton.isEnabled = true
-                Toast.makeText(this@CameraActivity, "تم التقاط الصورة. اضغط إرسال لفتح واتساب ومراجعة المستلم قبل الإرسال.", Toast.LENGTH_LONG).show()
-                sharePhoto(file)
+                capturedPhotos.add(file)
+                statusLabel.text = "تم تصوير ${capturedPhotos.size} صورة.\nزر رفع الصوت: صورة جديدة\nاضغط مطولاً على زر خفض الصوت: إرسال الكل إلى تيليجرام"
+                Toast.makeText(this@CameraActivity, "تم التقاط الصورة رقم ${capturedPhotos.size}", Toast.LENGTH_SHORT).show()
             }
+
             override fun onError(exception: ImageCaptureException) {
                 Toast.makeText(this@CameraActivity, "فشل التقاط الصورة: ${exception.message}", Toast.LENGTH_LONG).show()
             }
         })
     }
 
-    private fun sharePhoto(file: File) {
-        val uri = androidx.core.content.FileProvider.getUriForFile(
-            this, "${packageName}.fileprovider", file
-        )
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "image/jpeg"
-            putExtra(Intent.EXTRA_STREAM, uri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            setPackage("com.whatsapp")
+    private fun sendCapturedPhotos() {
+        if (isSending) return
+        val photos = capturedPhotos.toList()
+        if (photos.isEmpty()) {
+            Toast.makeText(this, "مفيش صور لإرسالها. صوّر الأول بزر رفع الصوت.", Toast.LENGTH_LONG).show()
+            return
         }
-        try {
-            startActivity(intent)
-        } catch (_: Exception) {
-            val fallback = Intent(Intent.ACTION_SEND).apply {
-                type = "image/jpeg"
-                putExtra(Intent.EXTRA_STREAM, uri)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        val prefs = SecurePrefs.get(this)
+        val token = prefs.getString("bot_token", "") ?: ""
+        val chatId = prefs.getString("chat_id", "") ?: ""
+        if (token.isBlank() || chatId.isBlank()) {
+            Toast.makeText(this, "اضبط Bot Token وChat ID من إعدادات التطبيق أولاً.", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        isSending = true
+        statusLabel.text = "جاري إرسال ${photos.size} صورة إلى تيليجرام..."
+        Thread {
+            var sent = 0
+            var error: String? = null
+            for (photo in photos) {
+                val result = uploadPhoto(photo, token, chatId)
+                if (!result.first) {
+                    error = result.second
+                    break
+                }
+                sent++
             }
-            startActivity(Intent.createChooser(fallback, "إرسال الصورة"))
+            runOnUiThread {
+                isSending = false
+                if (error == null) {
+                    capturedPhotos.removeAll(photos.toSet())
+                    photos.forEach { it.delete() }
+                    statusLabel.text = "تم إرسال ${sent} صورة بنجاح إلى تيليجرام.\nيمكنك التصوير من جديد بزر رفع الصوت."
+                    Toast.makeText(this, "تيليجرام أكد استلام كل الصور: $sent", Toast.LENGTH_LONG).show()
+                } else {
+                    statusLabel.text = "تم إرسال $sent من ${photos.size} صورة. فشل الباقي: $error\nحاول الضغط مطولاً على زر خفض الصوت مرة أخرى."
+                    Toast.makeText(this, "تعذر إكمال الإرسال: $error", Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
+    }
+
+    private fun uploadPhoto(file: File, token: String, chatId: String): Pair<Boolean, String> {
+        return try {
+            val body = MultipartBody.Builder().setType(MultipartBody.FORM)
+                .addFormDataPart("chat_id", chatId)
+                .addFormDataPart("photo", file.name, file.asRequestBody("image/jpeg".toMediaType()))
+                .build()
+            val request = Request.Builder()
+                .url("https://api.telegram.org/bot$token/sendPhoto")
+                .post(body)
+                .build()
+            val client = OkHttpClient.Builder().callTimeout(90, TimeUnit.SECONDS).build()
+            client.newCall(request).execute().use { response ->
+                val json = JSONObject(response.body?.string().orEmpty())
+                val ok = response.isSuccessful && json.optBoolean("ok")
+                Pair(ok, if (ok) "ok" else json.optString("description", "HTTP ${response.code}"))
+            }
+        } catch (e: Exception) {
+            Pair(false, e.message ?: "خطأ اتصال")
         }
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
-            takePhoto()
-            return true
+        when (keyCode) {
+            KeyEvent.KEYCODE_VOLUME_UP -> {
+                if (event?.repeatCount == 0) takePhoto()
+                return true
+            }
+            KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                if (event?.repeatCount == 0) {
+                    longPressHandled = false
+                    event.startTracking()
+                }
+                return true
+            }
         }
         return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onKeyLongPress(keyCode: Int, event: KeyEvent?): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+            if (!longPressHandled) {
+                longPressHandled = true
+                sendCapturedPhotos()
+            }
+            return true
+        }
+        return super.onKeyLongPress(keyCode, event)
+    }
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP) return true
+        return super.onKeyUp(keyCode, event)
     }
 }

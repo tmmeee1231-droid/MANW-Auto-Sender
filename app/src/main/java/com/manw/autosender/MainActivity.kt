@@ -38,13 +38,20 @@ class MainActivity : AppCompatActivity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(28, 36, 28, 24)
-            setBackgroundColor(0xFF10111A.toInt())
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+                intArrayOf(0xFF07070B.toInt(), 0xFF1B080D.toInt(), 0xFF090A10.toInt())
+            )
         }
         fun label(value: String, size: Float = 16f) = TextView(this).apply {
             text = value; textSize = size; setTextColor(0xFFF4F4F5.toInt())
             setPadding(0, 12, 0, 8)
         }
-        root.addView(label("𝑀𝒜𝒩𝒲 Auto Sender", 25f))
+        root.addView(label("☠ 𝓜𝓐𝓝𝓦𓄿𝓐𝓗𝓜𝓔𝓓  ☠", 25f).apply {
+            gravity = android.view.Gravity.CENTER
+            setTextColor(0xFFFFDADA.toInt())
+            setShadowLayer(14f, 0f, 0f, 0xFFB91C1C.toInt())
+        })
         root.addView(label("إرسال الصور الجديدة إلى تيليجرام"))
         token = EditText(this).apply {
             hint = "Bot Token الجديد"; setSingleLine(true); setTextColor(-1); setHintTextColor(0xFF9CA3AF.toInt())

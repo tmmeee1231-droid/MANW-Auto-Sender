@@ -188,14 +188,14 @@ app.post("/api/control", requireAuth, (req, res) => {
   if (!allowed.has(command)) return res.status(400).json({ error: "أمر غير مدعوم" });
   if (!state.paired) return res.status(409).json({ error: "اربط الهاتف أولاً من التطبيق" });
   const payload = {};
-  if (command === "whatsapp_open") {
+  if (command === "zoom") {\n    const value = Number(req.body?.value);\n    if (!Number.isFinite(value)) return res.status(400).json({ error: "قيمة التقريب غير صالحة" });\n    payload.value = Math.max(0, Math.min(1, value));\n  }\n  if (command === "whatsapp_open") {
     const phone = String(req.body?.phone || "").replace(/[^0-9]/g, "");
     const message = String(req.body?.message || "").slice(0, 1000);
     if (phone.length < 8 || phone.length > 15) return res.status(400).json({ error: "اكتب رقم واتساب دوليًا صحيحًا من 8 إلى 15 رقمًا" });
     payload.phone = phone;
     payload.message = message;
   }
-  commands.push({ id: randomBytes(8).toString("hex"), command, ...payload, createdAt: new Date().toISOString() });
+  const queuedCommand = command === "zoom" ? "zoom:" + payload.value : command;\n  commands.push({ id: randomBytes(8).toString("hex"), command: queuedCommand, ...payload, createdAt: new Date().toISOString() });
   broadcast({ type: "command", command });
   res.json({ ok: true, queued: true });
 });

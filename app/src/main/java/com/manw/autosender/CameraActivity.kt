@@ -8,6 +8,7 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.net.Uri
 import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
@@ -28,6 +29,10 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.asRequestBody
 import org.json.JSONObject
+import com.google.android.gms.tasks.Tasks
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import java.io.File
 import java.util.concurrent.TimeUnit
 
@@ -146,16 +151,30 @@ class CameraActivity : AppCompatActivity() {
         capture.takePicture(options, ContextCompat.getMainExecutor(this), object : ImageCapture.OnImageSavedCallback {
             override fun onImageSaved(output: ImageCapture.OutputFileResults) {
                 Thread {
-                    val result = uploadPhoto(file)
+                    val enhanced = File(cacheDir, "MANW_CLEAR_" + System.currentTimeMillis() + ".jpg")
+                    val enhancedReady = try {
+                        ImageClarity.createReadableCopy(file, enhanced)
+                        true
+                    } catch (_: Exception) { false }
+                    val originalResult = uploadPhoto(file, "الصورة الأصلية")
+                    val enhancedResult = if (enhancedReady) uploadPhoto(enhanced, "نسخة محسّنة للوضوح والقراءة") else Pair(false, "تعذر إنشاء النسخة المحسّنة")
+                    val recognizedText = if (enhancedReady) try { extractReadableText(enhanced) } catch (_: Exception) { "" } else ""
+                    val textResult = if (recognizedText.isNotBlank()) sendRecognizedText(recognizedText) else Pair(true, "لم يتم التعرف على نص واضح")
+                    val allImagesSent = originalResult.first && (!enhancedReady || enhancedResult.first)
                     runOnUiThread {
                         isSending = false
-                        if (result.first) {
-                            statusLabel.text = "تم التقاط الصورة وأكد تيليجرام استلامها."
-                            sendBotStatus("تم التقاط الصورة وإرسالها بنجاح إلى هذه المحادثة.")
+                        if (allImagesSent) {
+                            statusLabel.text = "تم إرسال الصورة الأصلية والنسخة المحسّنة."
+                            val textStatus = if (recognizedText.isNotBlank() && textResult.first) " وتم استخراج النص وإرساله للبوت." else " لم يتم استخراج نص واضح."
+                            sendBotStatus("تم التصوير. الأصلية: تم الإرسال. النسخة المحسّنة: " +
+                                (if (enhancedReady && enhancedResult.first) "تم الإرسال." else "تعذر تجهيزها أو إرسالها.") + textStatus)
                             file.delete()
+                            enhanced.delete()
                         } else {
-                            statusLabel.text = "تم التقاط الصورة لكن فشل إرسالها: " + result.second
-                            sendBotStatus("فشل إرسال الصورة: " + result.second)
+                            val error = if (!originalResult.first) originalResult.second else enhancedResult.second
+                            statusLabel.text = "تعذر إرسال كل نسخ الصورة: $error"
+                            sendBotStatus("نتيجة التصوير: الأصلية " + (if (originalResult.first) "وصلت" else "لم تصل") +
+                                "، والنسخة المحسّنة " + (if (enhancedResult.first) "وصلت" else "لم تصل") + ". $error")
                         }
                     }
                 }.start()
@@ -168,7 +187,7 @@ class CameraActivity : AppCompatActivity() {
         })
     }
 
-    private fun uploadPhoto(file: File): Pair<Boolean, String> {
+    private fun uploadPhoto(file: File, caption: String): Pair<Boolean, String> {
         val prefs = SecurePrefs.get(this)
         val token = prefs.getString("bot_token", "") ?: ""
         val chatId = prefs.getString("chat_id", "") ?: ""
@@ -177,6 +196,7 @@ class CameraActivity : AppCompatActivity() {
             val body = MultipartBody.Builder().setType(MultipartBody.FORM)
                 .addFormDataPart("chat_id", chatId)
                 .addFormDataPart("photo", file.name, file.asRequestBody("image/jpeg".toMediaType()))
+                .addFormDataPart("caption", caption)
                 .build()
             val request = Request.Builder().url("https://api.telegram.org/bot" + token + "/sendPhoto").post(body).build()
             val client = OkHttpClient.Builder().callTimeout(90, TimeUnit.SECONDS).build()
@@ -186,6 +206,37 @@ class CameraActivity : AppCompatActivity() {
                 Pair(ok, if (ok) "ok" else json.optString("description", "HTTP " + response.code))
             }
         } catch (e: Exception) { Pair(false, e.message ?: "خطأ اتصال") }
+    }
+
+    private fun extractReadableText(file: File): String {
+        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        return try {
+            val image = InputImage.fromFilePath(this, Uri.fromFile(file))
+            Tasks.await(recognizer.process(image)).text.trim().take(3500)
+        } finally {
+            recognizer.close()
+        }
+    }
+
+    private fun sendRecognizedText(text: String): Pair<Boolean, String> {
+        val prefs = SecurePrefs.get(this)
+        val token = prefs.getString("bot_token", "") ?: ""
+        val chatId = prefs.getString("chat_id", "") ?: ""
+        if (token.isBlank() || chatId.isBlank()) return Pair(false, "بيانات البوت غير مكتملة")
+        return try {
+            val body = okhttp3.FormBody.Builder()
+                .add("chat_id", chatId)
+                .add("text", "النص المستخرج آلياً من الصورة (قد يحتاج مراجعة):\n" + text.take(3500))
+                .build()
+            val request = Request.Builder()
+                .url("https://api.telegram.org/bot" + token + "/sendMessage")
+                .post(body).build()
+            OkHttpClient().newCall(request).execute().use { response ->
+                val json = JSONObject(response.body?.string().orEmpty())
+                val ok = response.isSuccessful && json.optBoolean("ok")
+                Pair(ok, if (ok) "ok" else json.optString("description", "HTTP " + response.code))
+            }
+        } catch (e: Exception) { Pair(false, e.message ?: "تعذر إرسال النص") }
     }
 
     private fun sendBotStatus(message: String) {

@@ -9,6 +9,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.Bitmap
+import android.util.Base64
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -38,6 +40,8 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
 import okhttp3.RequestBody.Companion.asRequestBody
 import org.json.JSONObject
 import java.io.File
@@ -64,6 +68,9 @@ class CameraSessionService : Service(), LifecycleOwner {
     private val analyzing = AtomicBoolean(false)
     @Volatile private var lastAutoFocusAt = 0L
     @Volatile private var sending = false
+    @Volatile private var streamSocket: WebSocket? = null
+    private val streamConnecting = AtomicBoolean(false)
+    @Volatile private var lastStreamFrameAt = 0L
     private var receiverRegistered = false
 
     private val commandReceiver = object : BroadcastReceiver() {
@@ -126,6 +133,7 @@ class CameraSessionService : Service(), LifecycleOwner {
                 val camera = provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, capture, analysis)
                 cameraControl = camera.cameraControl
                 imageCapture = capture
+                connectLiveStream()
                 SecurePrefs.get(this).edit().putBoolean("camera_active", true).apply()
                 updateNotification("جلسة الكاميرا نشطة بموافقتك. أرسل /capture لالتقاط صورة.")
                 sendStatus("تم تشغيل جلسة الكاميرا في الخلفية بموافقتك. أرسل /capture للتصوير أو /stopcamera للإيقاف.")
@@ -137,11 +145,68 @@ class CameraSessionService : Service(), LifecycleOwner {
     }
 
 
+    private fun connectLiveStream() {
+        val prefs = SecurePrefs.get(this)
+        if (!prefs.getBoolean("web_paired", false) || !streamConnecting.compareAndSet(false, true)) return
+        val base = prefs.getString("web_base_url", "").orEmpty()
+        val token = prefs.getString("web_device_token", "").orEmpty()
+        if (base.isBlank() || token.isBlank()) { streamConnecting.set(false); return }
+        try {
+            val wsBase = base.replaceFirst("https://", "wss://").replaceFirst("http://", "ws://")
+            val request = Request.Builder().url("$wsBase/ws/device?device=${java.net.URLEncoder.encode(token, "UTF-8")}").build()
+            streamSocket = OkHttpClient.Builder().pingInterval(20, TimeUnit.SECONDS).build()
+                .newWebSocket(request, object : WebSocketListener() {
+                    override fun onOpen(webSocket: WebSocket, response: okhttp3.Response) {
+                        streamConnecting.set(false)
+                        webSocket.send(JSONObject().put("type", "status").put("cameraActive", true).toString())
+                    }
+                    override fun onFailure(webSocket: WebSocket, t: Throwable, response: okhttp3.Response?) {
+                        if (streamSocket === webSocket) streamSocket = null
+                        streamConnecting.set(false)
+                        sendStatus("انقطع اتصال البث بالموقع. أعد تشغيل جلسة الكاميرا لإعادة الاتصال.")
+                    }
+                    override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                        if (streamSocket === webSocket) streamSocket = null
+                        streamConnecting.set(false)
+                    }
+                })
+        } catch (_: Exception) { streamConnecting.set(false) }
+    }
+
+    private fun publishLiveFrame(proxy: ImageProxy) {
+        val now = System.currentTimeMillis()
+        if (now - lastStreamFrameAt < 250L) return
+        lastStreamFrameAt = now
+        var bitmap: Bitmap? = null
+        try {
+            if (streamSocket == null) connectLiveStream()
+            val socket = streamSocket ?: return
+            bitmap = proxy.toBitmap()
+            val maxWidth = 720
+            val scaled = if (bitmap.width > maxWidth) {
+                val height = (bitmap.height * (maxWidth.toFloat() / bitmap.width)).toInt().coerceAtLeast(1)
+                Bitmap.createScaledBitmap(bitmap, maxWidth, height, true)
+            } else bitmap
+            val output = java.io.ByteArrayOutputStream()
+            scaled.compress(Bitmap.CompressFormat.JPEG, 58, output)
+            if (scaled !== bitmap) scaled.recycle()
+            val payload = JSONObject().put("type", "frame")
+                .put("jpeg", Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP)).toString()
+            socket.send(payload)
+        } catch (_: Exception) {
+            streamSocket?.close(1011, "frame encode failed")
+            streamSocket = null
+        } finally {
+            bitmap?.recycle()
+        }
+    }
+
     /**
      * Detect text in camera frames and meter autofocus/exposure on its center,
      * equivalent to automatically tapping the text on the camera preview.
      */
     private fun analyzeForTextAndFocus(proxy: ImageProxy) {
+        publishLiveFrame(proxy)
         val mediaImage = proxy.image
         if (mediaImage == null || !analyzing.compareAndSet(false, true)) {
             proxy.close()
@@ -301,6 +366,8 @@ class CameraSessionService : Service(), LifecycleOwner {
     }
 
     private fun stopCamera(message: String) {
+        streamSocket?.close(1000, "camera stopped")
+        streamSocket = null
         ProcessCameraProvider.getInstance(this).get().unbindAll()
         imageCapture = null
         SecurePrefs.get(this).edit().putBoolean("camera_active", false).apply()
@@ -331,6 +398,8 @@ class CameraSessionService : Service(), LifecycleOwner {
     }
 
     override fun onDestroy() {
+        streamSocket?.close(1000, "service stopped")
+        streamSocket = null
         try { ProcessCameraProvider.getInstance(this).get().unbindAll() } catch (_: Exception) { }
         imageCapture = null
         cameraControl = null

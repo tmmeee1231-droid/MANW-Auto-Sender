@@ -30,7 +30,7 @@ body:before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.08;ba
 <p class="muted">تحكم في التقريب والتركيز أثناء جلسة الكاميرا التي توافق عليها من الهاتف. سلاسة البث تتأثر بسرعة الإنترنت وإمكانيات الهاتف.</p></section>
 <aside class="panel"><h2 class="section-title">إعدادات النظام</h2><p class="muted">اقتران الهاتف يتم برمز مؤقت من داخل التطبيق. لن يتم تشغيل الكاميرا عن بُعد دون موافقة صريحة على الهاتف.</p><button id="pair" class="wide secondary">إنشاء رمز اقتران</button><div id="pairCode" class="muted"></div><hr style="border:0;border-top:1px solid var(--line);margin:18px 0"><h3 class="section-title">تغيير كلمة المرور</h3><form id="passwordForm"><label>كلمة المرور الحالية</label><input id="currentPassword" type="password" required><label>كلمة المرور الجديدة</label><input id="newPassword" type="password" minlength="10" required><button class="wide">حفظ كلمة المرور الجديدة</button></form><div id="passwordMessage" class="error"></div></aside>
 </div>
-<section class="panel" style="margin-top:14px" id="screenPanel"><h2 class="section-title">◉ مشاركة شاشة الهاتف وواتساب</h2><p class="muted">اطلب مشاركة الشاشة؛ سيظهر إشعار على الهاتف، ولا يبدأ البث إلا بعد موافقتك من أندرويد. أوقف المشاركة من هنا أو من إشعار الهاتف.</p><div class="actions"><button id="screenStart">طلب عرض شاشة الهاتف</button><button id="screenStop" class="danger">إيقاف مشاركة الشاشة</button></div><p id="screenStatus" class="muted" aria-live="polite">بانتظار طلب مشاركة الشاشة.</p>
+<section class="panel" style="margin-top:14px" id="screenPanel"><h2 class="section-title">◉ مشاركة شاشة الهاتف وواتساب</h2><p class="muted">اطلب مشاركة الشاشة؛ سيظهر إشعار على الهاتف، ولا يبدأ البث إلا بعد موافقتك من أندرويد. أوقف المشاركة من هنا أو من إشعار الهاتف.</p><div class="stream" id="screenStream"><span class="live hidden" id="screenLive">LIVE</span><img id="screenFrame" class="hidden" alt="شاشة الهاتف المباشرة"><div id="screenPlaceholder" class="placeholder">بانتظار موافقة مشاركة شاشة الهاتف</div></div><div class="actions"><button id="screenStart">طلب عرض شاشة الهاتف</button><button id="screenStop" class="danger">إيقاف مشاركة الشاشة</button></div><p id="screenStatus" class="muted" aria-live="polite">بانتظار طلب مشاركة الشاشة.</p>
 <div class="actions"><button id="remoteBack" class="secondary">رجوع</button><button id="remoteHome" class="secondary">الرئيسية</button></div>
 <label for="remoteText">كتابة في الخانة المحددة على الهاتف</label><div class="split"><input id="remoteText" maxlength="1000" placeholder="اكتب النص هنا"><button id="remoteSendText">إدخال النص</button></div>
 <p class="muted">بعد تفعيل خدمة إمكانية الوصول من إعدادات الهاتف، اضغط أو اسحب على صورة الشاشة للتحكم. إدخال النص يضعه في الحقل النشط فقط ولا يضغط إرسال.</p></section>
@@ -50,6 +50,7 @@ $("pair").onclick=async()=>{try{const d=await api("/api/device/pair-code",{metho
 $("passwordForm").onsubmit=async e=>{e.preventDefault();try{const d=await api("/api/password",{method:"POST",body:JSON.stringify({currentPassword:$("currentPassword").value,newPassword:$("newPassword").value})});$("passwordMessage").textContent=d.message;showLogin()}catch(err){$("passwordMessage").textContent=err.message}};
 const screenStatus=$("screenStatus");
 const viewFrame=$("frame");
+const screenFrame=$("screenFrame");
 let controlSocket=null;
 function sendRemote(payload){
   if(!controlSocket || controlSocket.readyState!==WebSocket.OPEN){screenStatus.textContent="اتصال التحكم غير جاهز. أعد فتح لوحة التحكم.";return;}
@@ -65,8 +66,8 @@ function framePoint(ev){
   const left=r.left+(r.width-dw)/2, top=r.top+(r.height-dh)/2;
   return {x:Math.max(0,Math.min(1,(ev.clientX-left)/dw)),y:Math.max(0,Math.min(1,(ev.clientY-top)/dh))};
 }
-viewFrame?.addEventListener("pointerdown",ev=>{if(!controlSocket||controlSocket.readyState!==WebSocket.OPEN)return;pointerStart=framePoint(ev);viewFrame.setPointerCapture?.(ev.pointerId);});
-viewFrame?.addEventListener("pointerup",ev=>{if(!pointerStart)return;const end=framePoint(ev),start=pointerStart;pointerStart=null;
+screenFrame?.addEventListener("pointerdown",ev=>{if(!controlSocket||controlSocket.readyState!==WebSocket.OPEN)return;pointerStart=framePoint(ev);screenFrame.setPointerCapture?.(ev.pointerId);});
+screenFrame?.addEventListener("pointerup",ev=>{if(!pointerStart)return;const end=framePoint(ev),start=pointerStart;pointerStart=null;
   if(Math.hypot(end.x-start.x,end.y-start.y)<0.025)sendRemote({action:"tap",x:end.x,y:end.y});
   else sendRemote({action:"swipe",x1:start.x,y1:start.y,x2:end.x,y2:end.y,duration:350});
 });
@@ -82,6 +83,6 @@ $("viewReset")?.addEventListener("click",()=>{viewZoom.value="1";enhanced=false;
 viewEnhance?.addEventListener("click",()=>{enhanced=!enhanced;viewEnhance.textContent=enhanced?"إلغاء تحسين الوضوح":"تحسين وضوح النص";applyPreview()});
 applyPreview();
 let zoomTimer;let lastZoomSent=0;const zoomControl=$("zoomControl");if(zoomControl){zoomControl.oninput=()=>{const v=Number(zoomControl.value);$("zoomValue").textContent=(1+v*4).toFixed(1)+"×";clearTimeout(zoomTimer);zoomTimer=setTimeout(async()=>{try{await api("/api/control",{method:"POST",body:JSON.stringify({command:"zoom",value:v})})}catch(e){$("connection").textContent=e.message}},180)}}
-let eventSource;function connectEvents(){if(eventSource)eventSource.close();eventSource=new EventSource("/api/events");eventSource.onmessage=e=>{};const ws=new WebSocket((location.protocol==="https:"?"wss://":"ws://")+location.host+"/ws/view");controlSocket=ws;ws.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==="frame"){ $("frame").src="data:image/jpeg;base64,"+d.jpeg;$("frame").classList.remove("hidden");$("streamPlaceholder").classList.add("hidden");$("liveBadge").classList.remove("hidden")}if(d.type==="media")loadMedia();if(d.type==="status")refresh()};setInterval(refresh,15000)}
+let eventSource;function connectEvents(){if(eventSource)eventSource.close();eventSource=new EventSource("/api/events");eventSource.onmessage=e=>{};const ws=new WebSocket((location.protocol==="https:"?"wss://":"ws://")+location.host+"/ws/view");controlSocket=ws;ws.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==="frame"){const target=d.source==="screen_frame"?screenFrame:viewFrame;target.src="data:image/jpeg;base64,"+d.jpeg;target.classList.remove("hidden");if(d.source==="screen_frame"){$("screenPlaceholder").classList.add("hidden");$("screenLive").classList.remove("hidden")}else{$("streamPlaceholder").classList.add("hidden");$("liveBadge").classList.remove("hidden")}}if(d.type==="media")loadMedia();if(d.type==="status")refresh()};setInterval(refresh,15000)}
 (async()=>{try{const s=await api("/api/session");s.authenticated?showDashboard():showLogin()}catch(e){showLogin()}})();
 </script></body></html>

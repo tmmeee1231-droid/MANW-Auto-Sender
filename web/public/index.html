@@ -66,7 +66,7 @@ function bindRemoteImage(img){
   img?.addEventListener("pointerdown",ev=>{if(!controlSocket||controlSocket.readyState!==WebSocket.OPEN)return;start=framePoint(ev,img);img.setPointerCapture?.(ev.pointerId)});
   img?.addEventListener("pointerup",ev=>{if(!start)return;const end=framePoint(ev,img),from=start;start=null;if(Math.hypot(end.x-from.x,end.y-from.y)<0.025)sendRemote({action:"tap",x:end.x,y:end.y});else sendRemote({action:"swipe",x1:from.x,y1:from.y,x2:end.x,y2:end.y,duration:350})});
 }
-bindRemoteImage(screenFrame);bindRemoteImage(waScreenFrame);
+bindRemoteImage(viewFrame);bindRemoteImage(waScreenFrame);
 $("waBack")?.addEventListener("click",()=>sendRemote({action:"back"}));
 $("waHome")?.addEventListener("click",()=>sendRemote({action:"home"}));
 $("screenStart")?.addEventListener("click",async()=>{try{await api("/api/control",{method:"POST",body:JSON.stringify({command:"screen_start"})});screenStatus.textContent="تم إرسال طلب المشاركة. وافق من إشعار MANW على الهاتف ثم وافق على نافذة أندرويد."}catch(e){screenStatus.textContent=e.message}});

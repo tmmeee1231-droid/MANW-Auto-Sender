@@ -6,6 +6,9 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Handler
@@ -47,8 +50,17 @@ class VideoRecordingService : LifecycleService() {
     private var durationSeconds = 30
     private val client = OkHttpClient.Builder().callTimeout(90, TimeUnit.SECONDS).build()
 
+    private val stopReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == ACTION_STOP) stopRecording()
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
+        val stopFilter = IntentFilter(ACTION_STOP)
+        if (Build.VERSION.SDK_INT >= 33) registerReceiver(stopReceiver, stopFilter, Context.RECEIVER_NOT_EXPORTED)
+        else @Suppress("DEPRECATION") registerReceiver(stopReceiver, stopFilter)
         val manager = getSystemService(NotificationManager::class.java)
         if (Build.VERSION.SDK_INT >= 26) manager.createNotificationChannel(
             NotificationChannel(CHANNEL, "تسجيل فيديو MANW", NotificationManager.IMPORTANCE_LOW)
@@ -132,7 +144,7 @@ class VideoRecordingService : LifecycleService() {
     private fun stopRecording() {
         handler.removeCallbacks(stopRunnable)
         val active = recording
-        if (active == null) { stopSelf(); return }
+        if (active == null) { if (!SecurePrefs.get(this).getBoolean("video_recording", false)) stopSelf(); return }
         updateNotificationText("جاري إنهاء الفيديو وحفظه ثم إرساله…")
         active.stop()
     }
@@ -181,6 +193,7 @@ class VideoRecordingService : LifecycleService() {
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
+        try { unregisterReceiver(stopReceiver) } catch (_: Exception) { }
         SecurePrefs.get(this).edit().putBoolean("video_recording", false).apply()
         recording?.stop()
         recording = null

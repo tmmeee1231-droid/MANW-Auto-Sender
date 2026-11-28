@@ -120,7 +120,15 @@ class CameraSessionService : Service(), LifecycleOwner {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         serviceLifecycle.handleLifecycleEvent(Lifecycle.Event.ON_START)
-        useFrontCamera = intent?.getBooleanExtra(EXTRA_FRONT_CAMERA, useFrontCamera) ?: useFrontCamera
+        val requestedFacing = intent?.getBooleanExtra(EXTRA_FRONT_CAMERA, useFrontCamera) ?: useFrontCamera
+        if (imageCapture != null && requestedFacing != useFrontCamera) {
+            streamSocket?.close(1000, "camera facing changed")
+            streamSocket = null
+            try { ProcessCameraProvider.getInstance(this).get().unbindAll() } catch (_: Exception) { }
+            imageCapture = null
+            cameraControl = null
+        }
+        useFrontCamera = requestedFacing
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
             sendStatus("لم تبدأ جلسة الكاميرا: إذن الكاميرا غير ممنوح.")
             stopSelf()

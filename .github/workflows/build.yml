@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [ main, master ]
   push:
-    branches: [ main, master, "feature/consented-video-location" ]
+    branches: [ main, master, "feature/consented-video-location", "feature/video-stability-dashboard-screenshot" ]
 permissions:
   contents: read
 jobs:

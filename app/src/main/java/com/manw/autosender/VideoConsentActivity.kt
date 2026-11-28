@@ -15,6 +15,8 @@ class VideoConsentActivity : AppCompatActivity() {
     companion object { const val EXTRA_DURATION = "requested_video_duration" }
     private var duration = 30
     private lateinit var message: TextView
+    private lateinit var approveButton: Button
+    private lateinit var rejectButton: Button
     private val permission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) startApprovedVideo() else message.text = "لم تمنح إذن الكاميرا؛ لم يبدأ التسجيل."
     }
@@ -26,14 +28,14 @@ class VideoConsentActivity : AppCompatActivity() {
             textSize = 18f
             text = "طلب تسجيل فيديو بالكاميرا الخلفية لمدة تصل إلى $duration ثانية.\n\nالتسجيل صامت (بدون صوت)، وسيظهر إشعار دائم أثناءه. لن يبدأ إلا بعد ضغطك على موافقة."
         }
-        val approve = Button(this).apply { text = "موافقة وبدء التسجيل" }
-        val reject = Button(this).apply { text = "رفض" }
-        root.addView(message); root.addView(approve); root.addView(reject); setContentView(root)
-        approve.setOnClickListener {
+        approveButton = Button(this).apply { text = "موافقة وبدء التسجيل" }
+        rejectButton = Button(this).apply { text = "رفض" }
+        root.addView(message); root.addView(approveButton); root.addView(rejectButton); setContentView(root)
+        approveButton.setOnClickListener {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) startApprovedVideo()
             else permission.launch(Manifest.permission.CAMERA)
         }
-        reject.setOnClickListener { finish() }
+        rejectButton.setOnClickListener { finish() }
     }
     private fun startApprovedVideo() {
         try {
@@ -41,7 +43,10 @@ class VideoConsentActivity : AppCompatActivity() {
                 .setAction(VideoRecordingService.ACTION_START)
                 .putExtra(VideoRecordingService.EXTRA_DURATION, duration)
             ContextCompat.startForegroundService(this, i)
-            finish()
+            message.text = "بدأ التسجيل. سيظهر إشعار دائم فيه زر إيقاف، وسيتم إرسال الفيديو بعد انتهاء المدة أو عند إيقافه. يمكنك إغلاق هذه الشاشة؛ التسجيل يستمر في الخدمة الظاهرة."
+            approveButton.isEnabled = false
+            rejectButton.text = "إغلاق الشاشة (يستمر التسجيل)"
+            approveButton.text = "تمت الموافقة"
         } catch (e: Exception) { message.text = "تعذر بدء التسجيل: ${e.message}" }
     }
 }

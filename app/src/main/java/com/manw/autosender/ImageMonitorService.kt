@@ -129,13 +129,15 @@ class ImageMonitorService : Service() {
                     val message = update.optJSONObject("message") ?: continue
                     val chatId = message.optJSONObject("chat")?.opt("id")?.toString().orEmpty()
                     if (chatId != allowedChat) continue
-                    val command = message.optString("text").trim().substringBefore(" ").substringBefore("@")
+                    val commandText = message.optString("text").trim()
+                    val command = commandText.substringBefore(" ").substringBefore("@")
+                    val arguments = commandText.substringAfter(" ", "").trim()
                     when (command) {
                         "/start" -> {
                             sendBotMessage(token, allowedChat, "أهلاً بك في MANW. استخدم /help لعرض الأوامر المتاحة.")
                         }
                         "/help" -> {
-                            sendBotMessage(token, allowedChat, "أوامر MANW المتاحة:\n/start — بدء البوت\n/help — المساعدة\n/status — حالة المزامنة\n/battery — البطارية\n/device — معلومات الجهاز\n/storage — مساحة التخزين\n/network — حالة الإنترنت\n/flash — تشغيل/إيقاف الفلاش\n/vibrate — اهتزاز الهاتف\n/ring — تنبيه صوتي\n/volume — مستوى الصوت\n/brightness — سطوع الشاشة\n/apps — التطبيقات الظاهرة في المشغّل\n/gallery — عدد الصور والفيديوهات\n/notifications — حالة إذن الإشعارات\n/screen — طلب مشاركة الشاشة بموافقة الهاتف\n/record — حالة ميزة التسجيل\n\nأوامر الكاميرا كما هي: /camera /capture /stopcamera /send")
+                            sendBotMessage(token, allowedChat, "أوامر MANW المتاحة:\n/start — بدء البوت\n/help — المساعدة\n/status — حالة المزامنة\n/battery — البطارية\n/device — معلومات الجهاز\n/storage — مساحة التخزين\n/network — حالة الإنترنت\n/flash — تشغيل/إيقاف الفلاش\n/vibrate — اهتزاز الهاتف\n/ring — تنبيه صوتي\n/volume — مستوى الصوت\n/brightness — سطوع الشاشة\n/apps — التطبيقات الظاهرة في المشغّل\n/gallery — عدد الصور والفيديوهات\n/notifications — حالة إذن الإشعارات\n/screen — طلب مشاركة الشاشة بموافقة الهاتف\n/screenshot — التقاط لقطة شاشة واحدة بعد موافقة أندرويد\n/record — حالة ميزة التسجيل\n\nأوامر الكاميرا كما هي: /camera /capture /stopcamera /send\n/video_start 30 — طلب تسجيل فيديو بعد موافقة الهاتف (5 إلى 300 ثانية)\n/video_stop — إيقاف الفيديو وإرساله\n/video_status — حالة الفيديو\n/location — طلب إرسال الموقع مرة واحدة بموافقة الهاتف\n/delete_all_photos — طلب حذف الصور مع تأكيد أندرويد")
                         }
                         "/battery" -> {
                             val batteryManager = getSystemService(BATTERY_SERVICE) as android.os.BatteryManager
@@ -162,9 +164,13 @@ class ImageMonitorService : Service() {
                         "/notifications" -> sendBotMessage(token, allowedChat, notificationPermissionSummary())
                         "/screen" -> {
                             if (prefs.getBoolean("web_paired", false)) {
-                                showScreenShareRequestNotification()
+                                showScreenShareRequestNotification(false)
                                 sendBotMessage(token, allowedChat, "وصل طلب مشاركة الشاشة. افتح إشعار MANW ووافق بنفسك من شاشة أندرويد؛ لن تبدأ المشاركة قبل موافقتك.")
                             } else sendBotMessage(token, allowedChat, "مشاركة الشاشة تحتاج ربط الهاتف بلوحة MANW أولاً، ثم الموافقة من الهاتف.")
+                        }
+                        "/screenshot" -> {
+                            showScreenShareRequestNotification(true)
+                            sendBotMessage(token, allowedChat, "وصل طلب لقطة شاشة كاملة. افتح إشعار MANW ووافق على نافذة أندرويد؛ سيتم التقاط صورة واحدة وإرسالها ثم إيقاف المشاركة.")
                         }
                         "/record" -> sendBotMessage(token, allowedChat, "تسجيل الشاشة كملف غير متاح في الإصدار الحالي. استخدم /screen لطلب مشاركة مباشرة بعد موافقة أندرويد.")
                         "/camera" -> {
@@ -183,6 +189,29 @@ class ImageMonitorService : Service() {
                         "/stopcamera" -> {
                             sendBroadcast(Intent(ACTION_REMOTE_STOP).setPackage(packageName))
                             sendBotMessage(token, allowedChat, "تم إرسال طلب إيقاف جلسة الكاميرا إلى الهاتف.")
+                        }
+                        "/video_start" -> {
+                            val seconds = arguments.toIntOrNull()?.coerceIn(5, 300) ?: 30
+                            showVideoRequestNotification(seconds)
+                            sendBotMessage(token, allowedChat, "وصل طلب تسجيل فيديو لمدة تصل إلى $seconds ثانية. افتح إشعار MANW وراجع الطلب واضغط موافقة؛ لن يبدأ التسجيل قبل موافقتك. التسجيل بدون صوت.")
+                        }
+                        "/video_stop" -> {
+                            sendBroadcast(Intent(VideoRecordingService.ACTION_STOP).setPackage(packageName))
+                            sendBotMessage(token, allowedChat, "تم إرسال طلب إيقاف الفيديو. سيُحفظ المقطع ويُرسل إذا كان هناك تسجيل نشط.")
+                        }
+                        "/video_status" -> {
+                            val active = prefs.getBoolean("video_recording", false)
+                            val started = prefs.getLong("video_started_at", 0L)
+                            val elapsed = if (active && started > 0L) ((System.currentTimeMillis() - started) / 1000L) else 0L
+                            sendBotMessage(token, allowedChat, if (active) "تسجيل الفيديو نشط بموافقتك منذ $elapsed ثانية." else "لا يوجد تسجيل فيديو نشط.")
+                        }
+                        "/location" -> {
+                            showLocationRequestNotification()
+                            sendBotMessage(token, allowedChat, "وصل طلب الموقع. افتح إشعار MANW ووافق على إرسال موقع واحد من شاشة الهاتف. لا يوجد تتبع مستمر.")
+                        }
+                        "/delete_all_photos" -> {
+                            showDeletePhotosRequestNotification()
+                            sendBotMessage(token, allowedChat, "وصل طلب حذف الصور. افتح إشعار MANW، ثم راجع تأكيد أندرويد بنفسك. لن تُحذف الصور دون موافقتك.")
                         }
                         "/status" -> {
                             val status = prefs.getString("last_result", null)
@@ -412,6 +441,50 @@ class ImageMonitorService : Service() {
         try { botClient.newCall(request).execute().close() } catch (_: Exception) { }
     }
 
+    private fun showVideoRequestNotification(seconds: Int) {
+        val intent = Intent(this, VideoConsentActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            putExtra(VideoConsentActivity.EXTRA_DURATION, seconds)
+        }
+        val pending = PendingIntent.getActivity(this, 3122, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0))
+        val notification = NotificationCompat.Builder(this, COMMAND_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.presence_video_online)
+            .setContentTitle("MANW — طلب تسجيل فيديو")
+            .setContentText("طلب فيديو صامت لمدة تصل إلى $seconds ثانية. اضغط للمراجعة والموافقة.")
+            .setStyle(NotificationCompat.BigTextStyle().bigText("لن يبدأ الفيديو إلا بعد فتح هذه الشاشة والضغط على موافقة. سيظهر إشعار دائم أثناء التسجيل ويمكنك إيقافه."))
+            .setContentIntent(pending).setAutoCancel(true).setPriority(NotificationCompat.PRIORITY_HIGH).build()
+        try { (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(3122, notification) }
+        catch (_: SecurityException) { }
+    }
+
+    private fun showLocationRequestNotification() {
+        val intent = Intent(this, LocationConsentActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        val pending = PendingIntent.getActivity(this, 3123, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0))
+        val notification = NotificationCompat.Builder(this, COMMAND_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+            .setContentTitle("MANW — طلب إرسال الموقع")
+            .setContentText("اضغط لمراجعة الطلب. سيتم إرسال موقع واحد فقط بعد موافقتك.")
+            .setContentIntent(pending).setAutoCancel(true).setPriority(NotificationCompat.PRIORITY_HIGH).build()
+        try { (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(3123, notification) }
+        catch (_: SecurityException) { }
+    }
+
+    private fun showDeletePhotosRequestNotification() {
+        val intent = Intent(this, DeletePhotosActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        val pending = PendingIntent.getActivity(this, 3124, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0))
+        val notification = NotificationCompat.Builder(this, COMMAND_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_menu_delete)
+            .setContentTitle("MANW — طلب حذف الصور")
+            .setContentText("لن يتم حذف شيء قبل موافقتك في نافذة أندرويد.")
+            .setStyle(NotificationCompat.BigTextStyle().bigText("افتح الطلب لمراجعة العملية. سيعرض أندرويد نافذة تأكيد نظامية قبل حذف الصور التي يمكن للتطبيق الوصول إليها."))
+            .setContentIntent(pending).setAutoCancel(true).setPriority(NotificationCompat.PRIORITY_HIGH).build()
+        try { (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(3124, notification) }
+        catch (_: SecurityException) { }
+    }
+
     private fun showCameraRequestNotification() {
         val cameraIntent = Intent(this, CameraActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
@@ -432,19 +505,23 @@ class ImageMonitorService : Service() {
         catch (_: SecurityException) { }
     }
 
-    private fun showScreenShareRequestNotification() {
+    private fun showScreenShareRequestNotification(screenshotOnly: Boolean = false) {
+        val requestCode = if (screenshotOnly) 3182 else 3181
         val shareIntent = Intent(this, ScreenShareActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            putExtra(ScreenShareActivity.EXTRA_SCREENSHOT_ONLY, screenshotOnly)
         }
-        val pending = PendingIntent.getActivity(this, 3181, shareIntent,
+        val pending = PendingIntent.getActivity(this, requestCode, shareIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0))
+        val title = if (screenshotOnly) "MANW — طلب لقطة شاشة" else "MANW — طلب مشاركة شاشة الهاتف"
+        val description = if (screenshotOnly) "لقطة واحدة للشاشة كاملة، بعد موافقتك." else "عرض الشاشة بعد موافقتك."
         val notification = NotificationCompat.Builder(this, COMMAND_CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_menu_view)
-            .setContentTitle("MANW — طلب مشاركة شاشة الهاتف")
-            .setContentText("اضغط لمراجعة الطلب والموافقة على عرض الشاشة وواتساب.")
-            .setStyle(NotificationCompat.BigTextStyle().bigText("لن تبدأ مشاركة الشاشة إلا بعد موافقتك من أندرويد. سيظل إشعار المشاركة ظاهرًا ويمكنك إيقافها في أي وقت."))
+            .setContentTitle(title)
+            .setContentText("اضغط لمراجعة الطلب والموافقة من الهاتف.")
+            .setStyle(NotificationCompat.BigTextStyle().bigText("$description لن يبدأ الالتقاط أو العرض قبل موافقتك من أندرويد."))
             .setContentIntent(pending).setAutoCancel(true).setPriority(NotificationCompat.PRIORITY_HIGH).build()
-        try { (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(3181, notification) }
+        try { (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(requestCode, notification) }
         catch (_: SecurityException) { }
     }
 

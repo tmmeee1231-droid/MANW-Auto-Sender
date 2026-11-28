@@ -67,6 +67,7 @@ try {
   await saveState();
 }
 if (!state.media) state.media = [];
+if (!Array.isArray(state.logs)) state.logs = [];
 
 app.disable("x-powered-by");
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
@@ -102,6 +103,12 @@ function cookie(res, value, maxAge) {
 function broadcast(payload) {
   const data = JSON.stringify(payload);
   for (const ws of viewers) if (ws.readyState === 1) ws.send(data);
+}
+function addLog(message) {
+  state.logs.unshift({ id: randomBytes(8).toString("hex"), message: String(message).slice(0, 240), createdAt: new Date().toISOString() });
+  state.logs = state.logs.slice(0, 300);
+  saveState().catch(() => {});
+  broadcast({ type: "logs" });
 }
 
 app.post("/api/login", async (req, res) => {
@@ -143,6 +150,8 @@ app.get("/api/status", requireAuth, (req, res) => res.json({
   serverTime: new Date().toISOString()
 }));
 app.get("/api/media", requireAuth, (req, res) => res.json({ items: state.media.slice(0, 100) }));
+app.get("/api/logs", requireAuth, (req, res) => res.json({ items: state.logs.slice(0, 100) }));
+app.delete("/api/logs", requireAuth, async (req, res) => { state.logs = []; commands.length = 0; await saveState(); broadcast({ type: "logs" }); res.json({ ok: true }); });
 app.get("/api/media/:id", requireAuth, async (req, res) => {
   const item = state.media.find(x => x.id === req.params.id);
   if (!item) return res.sendStatus(404);
@@ -183,6 +192,7 @@ app.post("/api/device/media", requireDevice, upload.single("file"), async (req, 
   if (!req.file) return res.status(400).json({ error: "الملف مفقود" });
   const item = { id: randomBytes(12).toString("hex"), file: req.file.filename, name: path.basename(req.file.originalname), type: req.file.mimetype, size: req.file.size, createdAt: new Date().toISOString() };
   state.media.unshift(item); state.media = state.media.slice(0, 500);
+  addLog("تم رفع وسيط جديد: " + item.name);
   await saveState(); broadcast({ type: "media", item }); res.json({ ok: true, item });
 });
 app.post("/api/control", requireAuth, (req, res) => {
@@ -205,6 +215,7 @@ app.post("/api/control", requireAuth, (req, res) => {
   }
   const queuedCommand = command === "zoom" ? "zoom:" + payload.value : command;
   commands.push({ id: randomBytes(8).toString("hex"), command: queuedCommand, ...payload, createdAt: new Date().toISOString() });
+  addLog("إرسال أمر إلى الهاتف: " + command);
   broadcast({ type: "command", command });
   res.json({ ok: true, queued: true });
 });

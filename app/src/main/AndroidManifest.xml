@@ -28,6 +28,10 @@
         </service>
         <service android:name=".CameraSessionService" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="camera" />
         <activity android:name=".CameraActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".VideoConsentActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".LocationConsentActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".DeletePhotosActivity" android:exported="false" android:screenOrientation="portrait" />
+        <service android:name=".VideoRecordingService" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="camera" />
         <activity android:name=".ScreenShareActivity" android:exported="false" android:screenOrientation="portrait" />
         <service android:name=".ScreenShareService" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="mediaProjection" />
         <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.fileprovider" android:exported="false" android:grantUriPermissions="true">

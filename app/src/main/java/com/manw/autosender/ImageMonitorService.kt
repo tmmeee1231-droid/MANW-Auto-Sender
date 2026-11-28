@@ -361,6 +361,7 @@ class ImageMonitorService : Service() {
             WebControlClient.pollCommands(base, deviceToken).forEach { remote ->
                 when (remote.command) {
                     "camera_start" -> showCameraRequestNotification()
+                    "camera_front_start" -> showCameraRequestNotification(frontCamera = true)
                     "screen_start" -> showScreenShareRequestNotification()
                     "accessibility_settings" -> showAccessibilitySettingsNotification()
                     "screen_stop" -> stopService(Intent(this, ScreenShareService::class.java))
@@ -485,10 +486,11 @@ class ImageMonitorService : Service() {
         catch (_: SecurityException) { }
     }
 
-    private fun showCameraRequestNotification() {
+    private fun showCameraRequestNotification(frontCamera: Boolean = false) {
         val cameraIntent = Intent(this, CameraActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             putExtra(CameraActivity.EXTRA_REMOTE_REQUEST, true)
+            putExtra(CameraActivity.EXTRA_FRONT_CAMERA, frontCamera)
         }
         val cameraPendingIntent = PendingIntent.getActivity(
             this, CAMERA_NOTIFICATION_ID, cameraIntent,
@@ -496,9 +498,9 @@ class ImageMonitorService : Service() {
         )
         val notification = NotificationCompat.Builder(this, COMMAND_CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_menu_camera)
-            .setContentTitle("MANW — طلب استخدام الكاميرا الخلفية")
-            .setContentText("اضغط لمراجعة الطلب. الكاميرا لن تعمل إلا بعد موافقتك.")
-            .setStyle(NotificationCompat.BigTextStyle().bigText("وصل طلب تشغيل كاميرا من لوحة التحكم أو بوت تيليجرام. افتح الإشعار ثم اضغط «موافقة وبدء الكاميرا» لبدء جلسة التصوير عن بُعد."))
+            .setContentTitle(if (frontCamera) "MANW — طلب بث الكاميرا الأمامية" else "MANW — طلب استخدام الكاميرا الخلفية")
+            .setContentText("اضغط لمراجعة الطلب. لن يبدأ البث إلا بعد موافقتك.")
+            .setStyle(NotificationCompat.BigTextStyle().bigText(if (frontCamera) "وصل طلب بث مباشر بالكاميرا الأمامية من لوحة التحكم. افتح الإشعار وراجع الطلب ثم وافق بنفسك؛ سيظل إشعار الكاميرا ظاهرًا ويمكنك إيقافها من الهاتف." else "وصل طلب تشغيل كاميرا من لوحة التحكم أو بوت تيليجرام. افتح الإشعار ثم اضغط «موافقة وبدء الكاميرا» لبدء جلسة التصوير."))
             .setContentIntent(cameraPendingIntent).setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH).build()
         try { (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(CAMERA_NOTIFICATION_ID, notification) }

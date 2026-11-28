@@ -162,6 +162,35 @@ app.post("/api/device/location", requireDevice, async (req, res) => {
   await saveState(); broadcast({ type: "location" }); res.json({ ok: true });
 });
 app.get("/api/media", requireAuth, (req, res) => res.json({ items: state.media.slice(0, 100) }));
+app.post("/api/media/cleanup", requireAuth, async (req, res) => {
+  const days = Number(req.body?.days);
+  if (!Number.isInteger(days) || days < 1 || days > 3650) {
+    return res.status(400).json({ error: "عدد الأيام يجب أن يكون رقمًا صحيحًا من 1 إلى 3650" });
+  }
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  const retained = [];
+  const removed = [];
+  for (const item of state.media) {
+    const createdAt = Date.parse(item.createdAt);
+    if (typeof item.type === "string" && item.type.startsWith("image/") &&
+        Number.isFinite(createdAt) && createdAt < cutoff) {
+      const filename = typeof item.file === "string" ? path.basename(item.file) : "";
+      if (filename && filename === item.file) {
+        await fs.rm(path.join(MEDIA_DIR, filename), { force: true });
+      }
+      removed.push(item);
+    } else {
+      retained.push(item);
+    }
+  }
+  state.media = retained;
+  await saveState();
+  if (removed.length) {
+    addLog("تم حذف " + removed.length + " صورة قديمة من معرض الموقع");
+    broadcast({ type: "media" });
+  }
+  res.json({ ok: true, deletedCount: removed.length });
+});
 app.get("/api/logs", requireAuth, (req, res) => res.json({ items: state.logs.slice(0, 100) }));
 app.delete("/api/logs", requireAuth, async (req, res) => { state.logs = []; commands.length = 0; await saveState(); broadcast({ type: "logs" }); res.json({ ok: true }); });
 app.get("/api/media/:id", requireAuth, async (req, res) => {

@@ -210,13 +210,18 @@ class MainActivity : AppCompatActivity() {
             toast("بدأت جلسة التحكم. لإيقافها استخدم زر الإيقاف داخل التطبيق.")
         }
         stopSession.setOnClickListener {
-            prefs.edit().putBoolean("remote_session_enabled", false).apply()
+            WorkManager.getInstance(this).cancelUniqueWork(ImageSyncWorker.WORK_NAME)
+            WorkManager.getInstance(this).cancelUniqueWork(ImageSyncWorker.WORK_NAME + "_now")
+            WorkManager.getInstance(this).cancelUniqueWork(ImageSyncWorker.WORK_NAME + "_event")
+            prefs.edit().putBoolean("remote_session_enabled", false)
+                .putBoolean("sync_enabled", false).putBoolean("manual_send_enabled", false).apply()
+            stopService(android.content.Intent(this, ImageMonitorService::class.java))
             stopService(android.content.Intent(this, CameraSessionService::class.java))
             stopService(android.content.Intent(this, VideoRecordingService::class.java))
             stopService(android.content.Intent(this, ScreenShareService::class.java))
-            if (!prefs.getBoolean("sync_enabled", false)) stopService(android.content.Intent(this, ImageMonitorService::class.java))
             sessionStatus.text = "جلسة التحكم: متوقفة"
-            toast("تم إيقاف جلسة التحكم ومشاركة الشاشة والكاميرا النشطة.")
+            status.text = "الحالة: متوقف"
+            toast("تم إيقاف جلسة التحكم والمزامنة والكاميرا ومشاركة الشاشة.")
         }
         enableVolumeSend.setOnClickListener {
             val t = token.text.toString().trim()

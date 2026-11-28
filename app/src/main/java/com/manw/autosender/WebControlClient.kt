@@ -48,6 +48,14 @@ object WebControlClient {
         client.newCall(request(base, token, "/api/device/heartbeat", body)).execute().close()
     }
 
+    fun publishLocation(base: String, token: String, latitude: Double, longitude: Double, accuracy: Float, timestamp: Long) {
+        val body = JSONObject().put("latitude", latitude).put("longitude", longitude)
+            .put("accuracy", accuracy.toDouble()).put("timestamp", timestamp).toString()
+        client.newCall(request(base, token, "/api/device/location", body)).execute().use { response ->
+            if (!response.isSuccessful) throw IllegalStateException("تعذر تحديث الموقع على لوحة التحكم")
+        }
+    }
+
     data class RemoteCommand(val command: String, val phone: String = "", val message: String = "")
 
     fun pollCommands(base: String, token: String): List<RemoteCommand> {

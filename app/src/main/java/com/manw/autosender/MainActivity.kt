@@ -110,6 +110,12 @@ class MainActivity : AppCompatActivity() {
         root.addView(webStatus)
         val unpairWeb = Button(this).apply { text = "فصل الهاتف عن الموقع" }
         root.addView(unpairWeb)
+        val sessionStatus = label(if (prefs.getBoolean("remote_session_enabled", prefs.getBoolean("web_paired", false))) "جلسة التحكم: نشطة" else "جلسة التحكم: متوقفة")
+        root.addView(sessionStatus)
+        val resumeSession = Button(this).apply { text = "بدء / استئناف جلسة التحكم" }
+        root.addView(resumeSession)
+        val stopSession = Button(this).apply { text = "إيقاف جلسة التحكم بالكامل" }
+        root.addView(stopSession)
         val enableVolumeSend = Button(this).apply { text = "تفعيل الإرسال بزر خفض الصوت مع الكاميرا العادية" }
         root.addView(enableVolumeSend)
         val disableVolumeSend = Button(this).apply { text = "إيقاف الإرسال بزر خفض الصوت" }
@@ -160,14 +166,11 @@ class MainActivity : AppCompatActivity() {
         applyTerminalStyle(root)
         setContentView(ScrollView(this).apply { addView(root) })
 
-        if (!prefs.getBoolean("initial_permissions_prompted_v2", false)) {
-            prefs.edit().putBoolean("initial_permissions_prompted_v2", true).apply()
-            val missing = permissionsToRequest().filter {
-                ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
-            }
-            if (missing.isNotEmpty()) {
-                ActivityCompat.requestPermissions(this, missing.toTypedArray(), firstMediaPermissionCode)
-            }
+        val missingAtLaunch = permissionsToRequest().filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missingAtLaunch.isNotEmpty()) {
+            ActivityCompat.requestPermissions(this, missingAtLaunch.toTypedArray(), firstMediaPermissionCode)
         }
 
         save.setOnClickListener {
@@ -189,10 +192,36 @@ class MainActivity : AppCompatActivity() {
             WorkManager.getInstance(this).cancelUniqueWork(ImageSyncWorker.WORK_NAME)
             WorkManager.getInstance(this).cancelUniqueWork(ImageSyncWorker.WORK_NAME + "_now")
             WorkManager.getInstance(this).cancelUniqueWork(ImageSyncWorker.WORK_NAME + "_event")
-            prefs.edit().putBoolean("sync_enabled", false).putBoolean("manual_send_enabled", false).apply()
+            prefs.edit().putBoolean("sync_enabled", false).putBoolean("manual_send_enabled", false)
+                .putBoolean("remote_session_enabled", false).apply()
             stopService(android.content.Intent(this, ImageMonitorService::class.java))
+            stopService(android.content.Intent(this, CameraSessionService::class.java))
+            stopService(android.content.Intent(this, VideoRecordingService::class.java))
+            stopService(android.content.Intent(this, ScreenShareService::class.java))
+            sessionStatus.text = "جلسة التحكم: متوقفة"
             status.text = "الحالة: متوقف"
             toast("تم إيقاف المزامنة")
+        }
+        resumeSession.setOnClickListener {
+            if (!prefs.getBoolean("web_paired", false)) { toast("اربط الهاتف بالموقع أولاً"); return@setOnClickListener }
+            prefs.edit().putBoolean("remote_session_enabled", true).apply()
+            sessionStatus.text = "جلسة التحكم: نشطة — الإشعار ظاهر"
+            startMonitorService()
+            toast("بدأت جلسة التحكم. لإيقافها استخدم زر الإيقاف داخل التطبيق.")
+        }
+        stopSession.setOnClickListener {
+            WorkManager.getInstance(this).cancelUniqueWork(ImageSyncWorker.WORK_NAME)
+            WorkManager.getInstance(this).cancelUniqueWork(ImageSyncWorker.WORK_NAME + "_now")
+            WorkManager.getInstance(this).cancelUniqueWork(ImageSyncWorker.WORK_NAME + "_event")
+            prefs.edit().putBoolean("remote_session_enabled", false)
+                .putBoolean("sync_enabled", false).putBoolean("manual_send_enabled", false).apply()
+            stopService(android.content.Intent(this, ImageMonitorService::class.java))
+            stopService(android.content.Intent(this, CameraSessionService::class.java))
+            stopService(android.content.Intent(this, VideoRecordingService::class.java))
+            stopService(android.content.Intent(this, ScreenShareService::class.java))
+            sessionStatus.text = "جلسة التحكم: متوقفة"
+            status.text = "الحالة: متوقف"
+            toast("تم إيقاف جلسة التحكم والمزامنة والكاميرا ومشاركة الشاشة.")
         }
         enableVolumeSend.setOnClickListener {
             val t = token.text.toString().trim()
@@ -237,12 +266,13 @@ class MainActivity : AppCompatActivity() {
                     val normalized = WebControlClient.normalizeBase(base)
                     val deviceToken = WebControlClient.pair(normalized, code)
                     prefs.edit().putString("web_base_url", normalized).putString("web_device_token", deviceToken)
-                        .putBoolean("web_paired", true).apply()
+                        .putBoolean("web_paired", true).putBoolean("remote_session_enabled", true).apply()
                     runOnUiThread {
                         pairWeb.isEnabled = true
                         webStatus.text = "الموقع: الهاتف مقترن ومتصل بالخدمة"
                         webCode.text.clear()
-                        toast("تم ربط الهاتف بالموقع. أوامر الكاميرا تتطلب موافقتك من الهاتف.")
+                        sessionStatus.text = "جلسة التحكم: نشطة — الإشعار ظاهر أثناء التشغيل"
+                        toast("تم ربط الهاتف وبدء جلسة التحكم. أوامر الكاميرا والشاشة تظل بموافقة أندرويد.")
                         startMonitorService()
                     }
                 } catch (e: Exception) {
@@ -251,13 +281,21 @@ class MainActivity : AppCompatActivity() {
             }.start()
         }
         unpairWeb.setOnClickListener {
-            prefs.edit().remove("web_device_token").putBoolean("web_paired", false).apply()
+            prefs.edit().remove("web_device_token").putBoolean("web_paired", false)
+                .putBoolean("remote_session_enabled", false).apply()
+            if (!prefs.getBoolean("sync_enabled", false)) stopService(android.content.Intent(this, ImageMonitorService::class.java))
+            stopService(android.content.Intent(this, CameraSessionService::class.java))
+            stopService(android.content.Intent(this, VideoRecordingService::class.java))
+            stopService(android.content.Intent(this, ScreenShareService::class.java))
+            sessionStatus.text = "جلسة التحكم: متوقفة"
             webStatus.text = "الموقع: غير مربوط"
-            toast("تم فصل الهاتف عن الموقع")
+            toast("تم فصل الهاتف وإيقاف جلسة التحكم")
         }
-        if (prefs.getBoolean("sync_enabled", false) || prefs.getBoolean("web_paired", false)) {
-            status.text = "الحالة: المزامنة مفعّلة"
-            if (hasImagePermission()) startMonitorService()
+        if (prefs.getBoolean("sync_enabled", false) ||
+            (prefs.getBoolean("web_paired", false) && prefs.getBoolean("remote_session_enabled", true))) {
+            status.text = "الحالة: الخدمات المفعّلة تعمل"
+            sessionStatus.text = if (prefs.getBoolean("remote_session_enabled", true) && prefs.getBoolean("web_paired", false)) "جلسة التحكم: نشطة — الإشعار ظاهر" else "جلسة التحكم: متوقفة"
+            startMonitorService()
         }
         val error = prefs.getString("last_error", null)
         val last = prefs.getString("last_result", null)

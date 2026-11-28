@@ -52,13 +52,13 @@ class ImageMonitorService : Service() {
 
     private val pollRunnable = object : Runnable {
         override fun run() {
-            if (destroyed || (!SecurePrefs.get(applicationContext).getBoolean("sync_enabled", false) && !SecurePrefs.get(applicationContext).getBoolean("web_paired", false))) return
+            if (destroyed || (!SecurePrefs.get(applicationContext).getBoolean("sync_enabled", false) && !(SecurePrefs.get(applicationContext).getBoolean("web_paired", false) && SecurePrefs.get(applicationContext).getBoolean("remote_session_enabled", true)))) return
             if (!polling) {
                 polling = true
                 Thread {
                     try { pollBotCommands() } finally {
                         polling = false
-                        if (!destroyed && (SecurePrefs.get(applicationContext).getBoolean("sync_enabled", false) || SecurePrefs.get(applicationContext).getBoolean("web_paired", false))) {
+                        if (!destroyed && (SecurePrefs.get(applicationContext).getBoolean("sync_enabled", false) || (SecurePrefs.get(applicationContext).getBoolean("web_paired", false) && SecurePrefs.get(applicationContext).getBoolean("remote_session_enabled", true)))) {
                             handler.postDelayed(this, 1000L)
                         }
                     }
@@ -96,7 +96,7 @@ class ImageMonitorService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (!SecurePrefs.get(applicationContext).getBoolean("sync_enabled", false) && !SecurePrefs.get(applicationContext).getBoolean("web_paired", false)) {
+        if (!SecurePrefs.get(applicationContext).getBoolean("sync_enabled", false) && !(SecurePrefs.get(applicationContext).getBoolean("web_paired", false) && SecurePrefs.get(applicationContext).getBoolean("remote_session_enabled", true))) {
             stopSelf()
             return START_NOT_STICKY
         }
@@ -350,7 +350,7 @@ class ImageMonitorService : Service() {
     }
 
     private fun pollWebsiteControl(prefs: android.content.SharedPreferences) {
-        if (!prefs.getBoolean("web_paired", false)) return
+        if (!prefs.getBoolean("web_paired", false) || !prefs.getBoolean("remote_session_enabled", true)) return
         val base = prefs.getString("web_base_url", "").orEmpty()
         val deviceToken = prefs.getString("web_device_token", "").orEmpty()
         if (base.isBlank() || deviceToken.isBlank()) return
@@ -548,7 +548,7 @@ class ImageMonitorService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_menu_upload)
             .setContentTitle("MANW Auto Sender يعمل")
-            .setContentText("مراقبة الصور والرد على أوامر بوت تيليجرام")
+            .setContentText("جلسة MANW ظاهرة: أوامر الموقع والبوت حسب الصلاحيات الممنوحة. أوقفها من التطبيق.")
             .setContentIntent(openApp)
             .setOngoing(true)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)

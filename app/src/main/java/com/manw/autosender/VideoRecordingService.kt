@@ -48,7 +48,12 @@ class VideoRecordingService : LifecycleService() {
     private var recording: Recording? = null
     private var cameraProvider: ProcessCameraProvider? = null
     private var durationSeconds = 30
-    private val client = OkHttpClient.Builder().callTimeout(90, TimeUnit.SECONDS).build()
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(20, TimeUnit.SECONDS)
+        .readTimeout(90, TimeUnit.SECONDS)
+        .writeTimeout(240, TimeUnit.SECONDS)
+        .callTimeout(300, TimeUnit.SECONDS)
+        .build()
 
     private val stopReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -111,7 +116,7 @@ class VideoRecordingService : LifecycleService() {
                     .setQualitySelector(QualitySelector.from(Quality.HD))
                     .build()
                 val videoCapture = VideoCapture.withOutput(recorder)
-                provider.unbindAll()
+                // Do not tear down unrelated CameraX use cases owned by other MANW features.
                 provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, videoCapture)
                 val output = File(cacheDir, "MANW_VIDEO_${System.currentTimeMillis()}.mp4")
                 val pending = recorder.prepareRecording(this, FileOutputOptions.Builder(output).build())
@@ -119,8 +124,12 @@ class VideoRecordingService : LifecycleService() {
                     if (event is VideoRecordEvent.Finalize) {
                         recording = null
                         handler.removeCallbacks(stopRunnable)
-                        if (event.hasError()) sendBot("فشل حفظ الفيديو: ${event.cause?.message ?: event.error}")
-                        else {
+                        SecurePrefs.get(this).edit().putBoolean("video_recording", false).apply()
+                        if (event.hasError()) {
+                            sendBot("فشل حفظ الفيديو: ${event.cause?.message ?: event.error}")
+                            output.delete()
+                            stopSelf()
+                        } else {
                             updateNotificationText("اكتمل التسجيل؛ جاري إرسال الفيديو إلى تيليجرام.")
                             Thread { uploadVideo(output); output.delete(); stopSelf() }.start()
                         }

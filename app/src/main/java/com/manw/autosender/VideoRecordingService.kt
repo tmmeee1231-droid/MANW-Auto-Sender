@@ -120,8 +120,8 @@ class VideoRecordingService : LifecycleService() {
                     if (event is VideoRecordEvent.Finalize) {
                         recording = null
                         handler.removeCallbacks(stopRunnable)
-                        try { videoCapture?.let { cameraProvider?.unbind(it) } } catch (_: Exception) { }
-                        videoCapture = null
+                        try { this@VideoRecordingService.videoCapture?.let { cameraProvider?.unbind(it) } } catch (_: Exception) { }
+                        this@VideoRecordingService.videoCapture = null
                         if (event.hasError()) sendBot("فشل حفظ الفيديو: ${event.cause?.message ?: event.error}")
                         else {
                             updateNotificationText("اكتمل التسجيل؛ جاري إرسال الفيديو إلى تيليجرام.")

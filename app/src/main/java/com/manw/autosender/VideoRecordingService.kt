@@ -43,6 +43,7 @@ class VideoRecordingService : LifecycleService() {
     }
     private val handler = Handler(mainLooper)
     private var recording: Recording? = null
+    private var cameraProvider: ProcessCameraProvider? = null
     private var durationSeconds = 30
     private val client = OkHttpClient.Builder().callTimeout(90, TimeUnit.SECONDS).build()
 
@@ -88,6 +89,12 @@ class VideoRecordingService : LifecycleService() {
         providerFuture.addListener({
             try {
                 val provider = providerFuture.get()
+                if (SecurePrefs.get(this).getBoolean("camera_active", false)) {
+                    sendBot("أوقف جلسة الكاميرا الحالية أولاً باستخدام /stopcamera، ثم أرسل /video_start مرة أخرى.")
+                    stopSelf()
+                    return@addListener
+                }
+                cameraProvider = provider
                 val recorder = Recorder.Builder()
                     .setQualitySelector(QualitySelector.from(Quality.HD))
                     .build()
@@ -177,6 +184,8 @@ class VideoRecordingService : LifecycleService() {
         SecurePrefs.get(this).edit().putBoolean("video_recording", false).apply()
         recording?.stop()
         recording = null
+        try { cameraProvider?.unbindAll() } catch (_: Exception) { }
+        cameraProvider = null
         super.onDestroy()
     }
 }

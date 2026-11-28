@@ -1,7 +1,7 @@
 name: Build Android APK
 on:
   workflow_dispatch:
-  push:
+  pull_request:\n    branches: [ main, master ]\n  push:
     branches: [ main, master, "feature/consented-video-location" ]
 permissions:
   contents: read

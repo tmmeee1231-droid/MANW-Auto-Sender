@@ -18,7 +18,8 @@ import androidx.core.content.ContextCompat
  * activity does not end an already approved camera session.
  */
 class CameraActivity : AppCompatActivity() {
-    companion object { const val EXTRA_REMOTE_REQUEST = "remote_camera_request" }
+    companion object { const val EXTRA_REMOTE_REQUEST = "remote_camera_request"; const val EXTRA_FRONT_CAMERA = "front_camera" }
+    private var useFrontCamera = false
     private lateinit var statusLabel: TextView
     private lateinit var startButton: Button
 
@@ -29,6 +30,7 @@ class CameraActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        useFrontCamera = intent.getBooleanExtra(EXTRA_FRONT_CAMERA, false)
         buildUi()
     }
 
@@ -39,12 +41,12 @@ class CameraActivity : AppCompatActivity() {
             setBackgroundColor(0xFF10111A.toInt())
         }
         statusLabel = TextView(this).apply {
-            text = "وصلك طلب تشغيل الكاميرا. لن تبدأ الكاميرا إلا بعد موافقتك."
+            text = if (useFrontCamera) "وصلك طلب بث مباشر بالكاميرا الأمامية. لن يبدأ البث إلا بعد موافقتك." else "وصلك طلب تشغيل الكاميرا الخلفية. لن تبدأ الكاميرا إلا بعد موافقتك."
             textSize = 17f
             setTextColor(0xFFFFFFFF.toInt())
             setPadding(8, 18, 8, 24)
         }
-        startButton = Button(this).apply { text = "موافقة وبدء جلسة الكاميرا في الخلفية" }
+        startButton = Button(this).apply { text = if (useFrontCamera) "موافقة وبدء البث بالكاميرا الأمامية" else "موافقة وبدء جلسة الكاميرا الخلفية" }
         val cancelButton = Button(this).apply { text = "رفض الطلب" }
         root.addView(statusLabel)
         root.addView(startButton)
@@ -64,9 +66,9 @@ class CameraActivity : AppCompatActivity() {
 
     private fun startApprovedSession() {
         try {
-            val intent = Intent(this, CameraSessionService::class.java).setAction(CameraSessionService.ACTION_START)
+            val intent = Intent(this, CameraSessionService::class.java).setAction(CameraSessionService.ACTION_START).putExtra(CameraSessionService.EXTRA_FRONT_CAMERA, useFrontCamera)
             ContextCompat.startForegroundService(this, intent)
-            Toast.makeText(this, "بدأت جلسة الكاميرا. يمكنك إغلاق هذه الشاشة؛ سيظل إشعار الكاميرا ظاهرًا.", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, if (useFrontCamera) "بدأ البث الأمامي بموافقتك. سيظل إشعار الكاميرا ظاهرًا." else "بدأت جلسة الكاميرا. سيظل إشعار الكاميرا ظاهرًا.", Toast.LENGTH_LONG).show()
             finish()
         } catch (e: Exception) {
             statusLabel.text = "تعذر بدء جلسة الكاميرا: " + (e.message ?: "خطأ غير معروف")

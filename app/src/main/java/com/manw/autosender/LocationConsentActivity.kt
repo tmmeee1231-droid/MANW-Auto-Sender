@@ -70,15 +70,26 @@ class LocationConsentActivity : AppCompatActivity() {
                 val prefs = SecurePrefs.get(this)
                 val token = prefs.getString("bot_token", "").orEmpty()
                 val chat = prefs.getString("chat_id", "").orEmpty()
-                if (token.isBlank() || chat.isBlank()) throw IllegalStateException("إعدادات تيليجرام غير مكتملة")
-                val maps = "https://maps.google.com/?q=${location.latitude},${location.longitude}"
-                val age = ((System.currentTimeMillis() - location.time).coerceAtLeast(0) / 1000)
-                val text = "موقع الهاتف بموافقة صاحبه:\n$maps\nالدقة التقريبية: ${location.accuracy.toInt()} متر\nعمر قراءة الموقع: $age ثانية"
-                val req = Request.Builder().url("https://api.telegram.org/bot$token/sendMessage")
-                    .post(FormBody.Builder().add("chat_id", chat).add("text", text).build()).build()
-                client.newCall(req).execute().use { response ->
-                    runOnUiThread { status.text = if (response.isSuccessful) "تم إرسال الموقع مرة واحدة." else "فشل إرسال الموقع (HTTP ${response.code})." }
+                var sent = false
+                if (token.isNotBlank() && chat.isNotBlank()) {
+                    val maps = "https://maps.google.com/?q=${location.latitude},${location.longitude}"
+                    val age = ((System.currentTimeMillis() - location.time).coerceAtLeast(0) / 1000)
+                    val text = "موقع الهاتف بموافقة صاحبه:\n$maps\nالدقة التقريبية: ${location.accuracy.toInt()} متر\nعمر قراءة الموقع: $age ثانية"
+                    val req = Request.Builder().url("https://api.telegram.org/bot$token/sendMessage")
+                        .post(FormBody.Builder().add("chat_id", chat).add("text", text).build()).build()
+                    client.newCall(req).execute().use { response ->
+                        if (!response.isSuccessful) throw IllegalStateException("فشل إرسال الموقع إلى تيليجرام")
+                    }
+                    sent = true
                 }
+                val base = prefs.getString("web_base_url", "").orEmpty()
+                val deviceToken = prefs.getString("web_device_token", "").orEmpty()
+                if (prefs.getBoolean("web_paired", false) && base.isNotBlank() && deviceToken.isNotBlank()) {
+                    WebControlClient.publishLocation(base, deviceToken, location.latitude, location.longitude, location.accuracy, location.time)
+                    sent = true
+                }
+                if (!sent) throw IllegalStateException("اربط الهاتف بالموقع أو أكمل إعدادات تيليجرام أولاً")
+                runOnUiThread { status.text = "تم إرسال الموقع مرة واحدة وعرضه على لوحة التحكم إذا كان الهاتف مربوطًا." }
             } catch (e: Exception) { runOnUiThread { status.text = "تعذر إرسال الموقع: ${e.message}" } }
         }.start()
     }

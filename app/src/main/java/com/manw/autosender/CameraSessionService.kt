@@ -63,11 +63,13 @@ class CameraSessionService : Service(), LifecycleOwner {
     override val lifecycle: Lifecycle get() = serviceLifecycle
     companion object {
         const val ACTION_START = "com.manw.autosender.CAMERA_SESSION_START"
+        const val EXTRA_FRONT_CAMERA = "front_camera"
         private const val CHANNEL_ID = "manw_camera_session"
         private const val NOTIFICATION_ID = 3111
     }
 
     @Volatile private var imageCapture: ImageCapture? = null
+    @Volatile private var useFrontCamera = false
     @Volatile private var cameraControl: CameraControl? = null
     private val analysisExecutor = Executors.newSingleThreadExecutor()
     private val progressExecutor = Executors.newSingleThreadExecutor()
@@ -118,6 +120,15 @@ class CameraSessionService : Service(), LifecycleOwner {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         serviceLifecycle.handleLifecycleEvent(Lifecycle.Event.ON_START)
+        val requestedFacing = intent?.getBooleanExtra(EXTRA_FRONT_CAMERA, useFrontCamera) ?: useFrontCamera
+        if (imageCapture != null && requestedFacing != useFrontCamera) {
+            streamSocket?.close(1000, "camera facing changed")
+            streamSocket = null
+            try { ProcessCameraProvider.getInstance(this).get().unbindAll() } catch (_: Exception) { }
+            imageCapture = null
+            cameraControl = null
+        }
+        useFrontCamera = requestedFacing
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
             sendStatus("لم تبدأ جلسة الكاميرا: إذن الكاميرا غير ممنوح.")
             stopSelf()
@@ -141,12 +152,13 @@ class CameraSessionService : Service(), LifecycleOwner {
                     .build()
                 analysis.setAnalyzer(analysisExecutor) { proxy -> analyzeForTextAndFocus(proxy) }
                 provider.unbindAll()
-                val camera = provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, capture, analysis)
+                val selector = if (useFrontCamera) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
+                val camera = provider.bindToLifecycle(this, selector, capture, analysis)
                 cameraControl = camera.cameraControl
                 imageCapture = capture
                 connectLiveStream()
                 SecurePrefs.get(this).edit().putBoolean("camera_active", true).apply()
-                updateNotification("جلسة الكاميرا نشطة بموافقتك. أرسل /capture لالتقاط صورة.")
+                updateNotification("جلسة ${if (useFrontCamera) "الكاميرا الأمامية" else "الكاميرا الخلفية"} نشطة بموافقتك. أرسل /capture لالتقاط صورة.")
                 sendStatus("تم تشغيل جلسة الكاميرا في الخلفية بموافقتك. أرسل /capture للتصوير أو /stopcamera للإيقاف.")
             } catch (e: Exception) {
                 sendStatus("تعذر تشغيل الكاميرا: " + (e.message ?: "خطأ غير معروف"))

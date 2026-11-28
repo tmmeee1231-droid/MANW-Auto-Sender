@@ -77,8 +77,14 @@ class LocationConsentActivity : AppCompatActivity() {
                 val req = Request.Builder().url("https://api.telegram.org/bot$token/sendMessage")
                     .post(FormBody.Builder().add("chat_id", chat).add("text", text).build()).build()
                 client.newCall(req).execute().use { response ->
-                    runOnUiThread { status.text = if (response.isSuccessful) "تم إرسال الموقع مرة واحدة." else "فشل إرسال الموقع (HTTP ${response.code})." }
+                    if (!response.isSuccessful) throw IllegalStateException("فشل إرسال الموقع إلى تيليجرام")
                 }
+                val base = prefs.getString("web_base_url", "").orEmpty()
+                val deviceToken = prefs.getString("web_device_token", "").orEmpty()
+                if (prefs.getBoolean("web_paired", false) && base.isNotBlank() && deviceToken.isNotBlank()) {
+                    WebControlClient.publishLocation(base, deviceToken, location.latitude, location.longitude, location.accuracy, location.time)
+                }
+                runOnUiThread { status.text = "تم إرسال الموقع مرة واحدة وعرضه على لوحة التحكم إذا كان الهاتف مربوطًا." }
             } catch (e: Exception) { runOnUiThread { status.text = "تعذر إرسال الموقع: ${e.message}" } }
         }.start()
     }

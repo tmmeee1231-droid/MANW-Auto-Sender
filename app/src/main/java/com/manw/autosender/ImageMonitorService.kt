@@ -164,9 +164,13 @@ class ImageMonitorService : Service() {
                         "/notifications" -> sendBotMessage(token, allowedChat, notificationPermissionSummary())
                         "/screen" -> {
                             if (prefs.getBoolean("web_paired", false)) {
-                                showScreenShareRequestNotification()
+                                showScreenShareRequestNotification(false)
                                 sendBotMessage(token, allowedChat, "وصل طلب مشاركة الشاشة. افتح إشعار MANW ووافق بنفسك من شاشة أندرويد؛ لن تبدأ المشاركة قبل موافقتك.")
                             } else sendBotMessage(token, allowedChat, "مشاركة الشاشة تحتاج ربط الهاتف بلوحة MANW أولاً، ثم الموافقة من الهاتف.")
+                        }
+                        "/screenshot" -> {
+                            showScreenShareRequestNotification(true)
+                            sendBotMessage(token, allowedChat, "وصل طلب لقطة شاشة كاملة. افتح إشعار MANW ووافق على نافذة أندرويد؛ سيتم التقاط صورة واحدة وإرسالها ثم إيقاف المشاركة.")
                         }
                         "/record" -> sendBotMessage(token, allowedChat, "تسجيل الشاشة كملف غير متاح في الإصدار الحالي. استخدم /screen لطلب مشاركة مباشرة بعد موافقة أندرويد.")
                         "/camera" -> {
@@ -501,19 +505,23 @@ class ImageMonitorService : Service() {
         catch (_: SecurityException) { }
     }
 
-    private fun showScreenShareRequestNotification() {
+    private fun showScreenShareRequestNotification(screenshotOnly: Boolean = false) {
+        val requestCode = if (screenshotOnly) 3182 else 3181
         val shareIntent = Intent(this, ScreenShareActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            putExtra(ScreenShareActivity.EXTRA_SCREENSHOT_ONLY, screenshotOnly)
         }
-        val pending = PendingIntent.getActivity(this, 3181, shareIntent,
+        val pending = PendingIntent.getActivity(this, requestCode, shareIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0))
+        val title = if (screenshotOnly) "MANW — طلب لقطة شاشة" else "MANW — طلب مشاركة شاشة الهاتف"
+        val description = if (screenshotOnly) "لقطة واحدة للشاشة كاملة، بعد موافقتك." else "عرض الشاشة بعد موافقتك."
         val notification = NotificationCompat.Builder(this, COMMAND_CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_menu_view)
-            .setContentTitle("MANW — طلب مشاركة شاشة الهاتف")
-            .setContentText("اضغط لمراجعة الطلب والموافقة على عرض الشاشة وواتساب.")
-            .setStyle(NotificationCompat.BigTextStyle().bigText("لن تبدأ مشاركة الشاشة إلا بعد موافقتك من أندرويد. سيظل إشعار المشاركة ظاهرًا ويمكنك إيقافها في أي وقت."))
+            .setContentTitle(title)
+            .setContentText("اضغط لمراجعة الطلب والموافقة من الهاتف.")
+            .setStyle(NotificationCompat.BigTextStyle().bigText("$description لن يبدأ الالتقاط أو العرض قبل موافقتك من أندرويد."))
             .setContentIntent(pending).setAutoCancel(true).setPriority(NotificationCompat.PRIORITY_HIGH).build()
-        try { (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(3181, notification) }
+        try { (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(requestCode, notification) }
         catch (_: SecurityException) { }
     }
 

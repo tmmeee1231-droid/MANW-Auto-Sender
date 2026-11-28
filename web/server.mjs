@@ -208,7 +208,7 @@ app.post("/api/device/media", requireDevice, upload.single("file"), async (req, 
   await saveState(); broadcast({ type: "media", item }); res.json({ ok: true, item });
 });
 app.post("/api/control", requireAuth, (req, res) => {
-  const allowed = new Set(["camera_start", "camera_front_start", "camera_stop", "capture", "focus_center", "zoom", "record_start", "record_stop", "whatsapp_open", "screen_start", "screen_stop", "accessibility_settings"]);
+  const allowed = new Set(["camera_start", "camera_front_start", "camera_stop", "capture", "focus_center", "zoom", "record_start", "record_stop", "whatsapp_open", "screen_start", "screen_stop", "accessibility_settings", "location_request"]);
   const command = String(req.body?.command || "");
   if (!allowed.has(command)) return res.status(400).json({ error: "أمر غير مدعوم" });
   if (!state.paired) return res.status(409).json({ error: "اربط الهاتف أولاً من التطبيق" });

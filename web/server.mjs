@@ -109,6 +109,7 @@ function appendLog(action, detail = "") {
   state.logs.unshift({ id: randomBytes(8).toString("hex"), action: String(action).slice(0, 80), detail: String(detail).slice(0, 240), createdAt: new Date().toISOString() });
   state.logs = state.logs.slice(0, 250);
   saveState().catch(() => {});
+  broadcast({ type: "logs" });
 }
 
 app.post("/api/login", async (req, res) => {
@@ -155,6 +156,7 @@ app.delete("/api/logs", requireAuth, async (_req, res) => {
   const removed = state.logs.length;
   state.logs = [];
   await saveState();
+  broadcast({ type: "logs" });
   res.json({ ok: true, removed });
 });
 app.get("/api/media/:id", requireAuth, async (req, res) => {

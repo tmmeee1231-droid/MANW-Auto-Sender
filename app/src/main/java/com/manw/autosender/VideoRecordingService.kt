@@ -47,6 +47,7 @@ class VideoRecordingService : LifecycleService() {
     private val handler = Handler(mainLooper)
     private var recording: Recording? = null
     private var cameraProvider: ProcessCameraProvider? = null
+    private var videoCapture: VideoCapture<Recorder>? = null
     private var durationSeconds = 30
     private val client = OkHttpClient.Builder().callTimeout(90, TimeUnit.SECONDS).build()
 
@@ -111,7 +112,7 @@ class VideoRecordingService : LifecycleService() {
                     .setQualitySelector(QualitySelector.from(Quality.HD))
                     .build()
                 val videoCapture = VideoCapture.withOutput(recorder)
-                provider.unbindAll()
+                this.videoCapture = videoCapture
                 provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, videoCapture)
                 val output = File(cacheDir, "MANW_VIDEO_${System.currentTimeMillis()}.mp4")
                 val pending = recorder.prepareRecording(this, FileOutputOptions.Builder(output).build())
@@ -119,6 +120,8 @@ class VideoRecordingService : LifecycleService() {
                     if (event is VideoRecordEvent.Finalize) {
                         recording = null
                         handler.removeCallbacks(stopRunnable)
+                        try { cameraProvider?.unbind(videoCapture) } catch (_: Exception) { }
+                        videoCapture = null
                         if (event.hasError()) sendBot("فشل حفظ الفيديو: ${event.cause?.message ?: event.error}")
                         else {
                             updateNotificationText("اكتمل التسجيل؛ جاري إرسال الفيديو إلى تيليجرام.")
@@ -197,7 +200,8 @@ class VideoRecordingService : LifecycleService() {
         SecurePrefs.get(this).edit().putBoolean("video_recording", false).apply()
         recording?.stop()
         recording = null
-        try { cameraProvider?.unbindAll() } catch (_: Exception) { }
+        try { videoCapture?.let { cameraProvider?.unbind(it) } } catch (_: Exception) { }
+        videoCapture = null
         cameraProvider = null
         super.onDestroy()
     }

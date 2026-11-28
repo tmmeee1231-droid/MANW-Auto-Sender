@@ -138,7 +138,9 @@ class MainActivity : AppCompatActivity() {
         root.addView(changeWallpaper)
         val changeIcon = Button(this).apply { text = "اختيار أيقونة MANW من المعرض" }
         root.addView(changeIcon)
-        root.addView(label("الخلفية تُحفظ داخل التطبيق. الأيقونة المختارة تُضاف كاختصار مستقل للشاشة الرئيسية.", 13f))
+        val removeHomeIconGuide = Button(this).apply { text = "إزالة أيقونة MANW من الشاشة الرئيسية" }
+        root.addView(removeHomeIconGuide)
+        root.addView(label("تقدر تشيل الاختصار من الشاشة الرئيسية وتسيب التطبيق موجودًا في قائمة التطبيقات. أندرويد يتطلب تنفيذ الإزالة من المشغّل نفسه.", 13f))
         // Terminal / Termux visual language across every control.
         fun applyTerminalStyle(view: android.view.View) {
             when (view) {
@@ -169,8 +171,16 @@ class MainActivity : AppCompatActivity() {
         val missingAtLaunch = permissionsToRequest().filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }
-        if (missingAtLaunch.isNotEmpty()) {
-            ActivityCompat.requestPermissions(this, missingAtLaunch.toTypedArray(), firstMediaPermissionCode)
+        if (missingAtLaunch.isNotEmpty() && !prefs.getBoolean("startup_permission_explained", false)) {
+            android.app.AlertDialog.Builder(this)
+                .setTitle("أذونات MANW")
+                .setMessage("سيطلب أندرويد الأذونات اللازمة للوظائف التي تختار استخدامها، مثل الصور والكاميرا والموقع والإشعارات. يمكنك رفض أي إذن، ولن تعمل الوظيفة المرتبطة به. الكاميرا ومشاركة الشاشة تحتاجان موافقة منفصلة وقت التشغيل.")
+                .setNegativeButton("لاحقًا", null)
+                .setPositiveButton("متابعة وطلب الأذونات") { _, _ ->
+                    prefs.edit().putBoolean("startup_permission_explained", true).apply()
+                    ActivityCompat.requestPermissions(this, missingAtLaunch.toTypedArray(), firstMediaPermissionCode)
+                }
+                .show()
         }
 
         save.setOnClickListener {
@@ -247,6 +257,7 @@ class MainActivity : AppCompatActivity() {
         changePassword.setOnClickListener { showChangePasswordDialog() }
         changeWallpaper.setOnClickListener { openAppearancePicker(wallpaperRequestCode) }
         changeIcon.setOnClickListener { openAppearancePicker(iconRequestCode) }
+        removeHomeIconGuide.setOnClickListener { showHomeShortcutRemovalGuide() }
         test.setOnClickListener {
             val t = token.text.toString().trim()
             val c = chat.text.toString().trim()
@@ -303,6 +314,14 @@ class MainActivity : AppCompatActivity() {
         if (!last.isNullOrBlank()) root.addView(label("آخر نتيجة: " + last))
     }
 
+
+    private fun showHomeShortcutRemovalGuide() {
+        android.app.AlertDialog.Builder(this)
+            .setTitle("إزالة اختصار الشاشة الرئيسية")
+            .setMessage("أندرويد لا يسمح للتطبيق بحذف أيقونة الشاشة الرئيسية بنفسه.\n\n1) ارجع للشاشة الرئيسية.\n2) اضغط مطولًا على أيقونة MANW.\n3) اختر «إزالة» أو اسحبها إلى «إزالة» — وليس «إلغاء التثبيت».\n\nسيظل MANW مثبتًا وموجودًا في قائمة التطبيقات، ويمكنك فتحه وإيقاف الجلسة منه في أي وقت.")
+            .setPositiveButton("حسنًا", null)
+            .show()
+    }
 
     override fun onResume() {
         super.onResume()

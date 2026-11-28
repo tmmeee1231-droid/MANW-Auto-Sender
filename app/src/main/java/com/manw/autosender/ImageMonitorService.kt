@@ -362,6 +362,7 @@ class ImageMonitorService : Service() {
                 when (remote.command) {
                     "camera_start" -> showCameraRequestNotification()
                     "camera_front_start" -> showCameraRequestNotification(frontCamera = true)
+                    "location_request" -> showLocationRequestNotification()
                     "screen_start" -> showScreenShareRequestNotification()
                     "accessibility_settings" -> showAccessibilitySettingsNotification()
                     "screen_stop" -> stopService(Intent(this, ScreenShareService::class.java))

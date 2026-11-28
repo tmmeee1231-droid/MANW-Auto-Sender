@@ -120,7 +120,7 @@ class VideoRecordingService : LifecycleService() {
                     if (event is VideoRecordEvent.Finalize) {
                         recording = null
                         handler.removeCallbacks(stopRunnable)
-                        try { cameraProvider?.unbind(videoCapture) } catch (_: Exception) { }
+                        try { videoCapture?.let { cameraProvider?.unbind(it) } } catch (_: Exception) { }
                         videoCapture = null
                         if (event.hasError()) sendBot("فشل حفظ الفيديو: ${event.cause?.message ?: event.error}")
                         else {
